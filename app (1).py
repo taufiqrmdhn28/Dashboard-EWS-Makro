@@ -501,7 +501,7 @@ main_menu = st.radio(
 )
 st.markdown("---")
     
-    if main_menu == "🌍 Sektor Eksternal & Fiskal":
+    elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         st.divider()
         st.markdown("**BASELINE SKENARIO**")
         scen = st.radio("Skenario", ["med", "high"], horizontal=True, format_func=lambda x: "Med" if x == "med" else "High")
