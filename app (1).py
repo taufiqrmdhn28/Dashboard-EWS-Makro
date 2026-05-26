@@ -1621,4 +1621,4 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 # ==========================================
 elif main_menu == "📍 Ekonomi Daerah (WIP)":
     st.markdown("### 📍 Command Center: Ekonomi Kewilayahan")
-    st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")")
+    st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")
