@@ -554,23 +554,27 @@ if main_menu == "📊 Makro Nasional (DFM)":
         with header_ui:
             st.markdown(f"### {title_text}")
             
-            # 🔥 INPUT MANUAL C-T-C 🔥
-            # Silakan ganti kata None dengan angka c-t-c dari rilis BPS (Contoh: 5.11)
-            realisasi_bps_ctc = 5.11 
+            # 🔥 INPUT MANUAL C-T-C (Sudah disesuaikan ke 5.61) 🔥
+            realisasi_bps_ctc = 5.61 
             
             c1, c2, c3, c4 = st.columns(4)
             
+            # 1. KOTAK TARGET
             c1.metric("Target Acuan", f"{current_target}%")
             
+            # 2. KOTAK REALISASI BPS (MANUAL + KETERANGAN PERIODE)
             if realisasi_bps_ctc is not None:
                 gap_realisasi = realisasi_bps_ctc - current_target
                 c2.metric("Realisasi BPS (c-t-c)", f"{realisasi_bps_ctc:.2f}%", delta=f"{gap_realisasi:.2f}%")
+                c2.caption("Capaian Triwulan I-2026") # 🔥 KETERANGAN TAMBAHAN DI BAWAH KOTAK
             else:
                 c2.metric("Realisasi BPS (c-t-c)", "Belum Rilis", delta="-", delta_color="off")
                 
+            # 3. KOTAK PROYEKSI DFM (Avg)
             gap_proyeksi = current_avg - current_target
             c3.metric("Proyeksi DFM (Avg)", f"{current_avg:.2f}%", delta=f"{gap_proyeksi:.2f}%")
             
+            # 4. KOTAK STATUS CAPAIAN
             angka_acuan_status = realisasi_bps_ctc if realisasi_bps_ctc is not None else current_avg
             gap_status = angka_acuan_status - current_target
             status = "✅ SESUAI TARGET" if gap_status >= -0.1 else "❌ BELOW TARGET"
