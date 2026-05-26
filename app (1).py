@@ -1299,91 +1299,326 @@ Bagian Bawah: LAMPIRAN ANALISIS TEKNIS
 # =========================================================================
 
 # ==========================================
-# MODUL 2: SEKTOR EKSTERNAL & FISKAL (Translasi dari Dash ke Streamlit)
+# MODUL 2: SEKTOR EKSTERNAL & FISKAL (SUPER UI/UX DASH REPLICA)
 # ==========================================
 elif main_menu == "🌍 Sektor Eksternal & Fiskal":
-    st.markdown("### 🌍 Simulasi Ketahanan Sektor Eksternal & Fiskal")
-    st.caption("Modul simulasi interaktif dampak guncangan Nilai Tukar dan Harga Minyak (ICP) terhadap neraca makro.")
     
-    # Custom CSS untuk Modul Eksternal
-    st.markdown("""
-    <style>
-        .kpi-card { padding: 20px; border: 1px solid #e1e4e8; border-radius: 8px; background-color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .kpi-title { font-size: 13px; font-weight: bold; color: #6c757d; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;}
-        .kpi-value { font-size: 26px; font-weight: bold; color: #111827; }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Eksekusi Simulasi
-    b_curr, s_curr = simulate_eksternal(nt_val, oil_val, year_val, scen_val)
-    years_sim = [2026, 2027, 2028, 2029]
-    
-    def get_trend(key): return [simulate_eksternal(nt_val, oil_val, y, scen_val)[1][key] for y in years_sim]
-    def get_base_trend(key): return [simulate_eksternal(nt_val, oil_val, y, scen_val)[0][key] for y in years_sim]
+    # --- 1. SETUP STATE UNTUK PRESET BUTTON ---
+    if 'nt_val' not in st.session_state: st.session_state.nt_val = 16700
+    if 'oil_val' not in st.session_state: st.session_state.oil_val = 65
+    if 'year_val' not in st.session_state: st.session_state.year_val = 2026
+    if 'scen_val' not in st.session_state: st.session_state.scen_val = 'med'
 
-    # Bikin Tab UI
-    tab1, tab2, tab3 = st.tabs(['📊 Neraca Pembayaran (BOP)', '📈 Pertumbuhan Ekonomi (PDB)', '🏛 Defisit APBN'])
-    
-    with tab1:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        c1, c2, c3, c4 = st.columns(4)
-        c1.markdown(f"<div class='kpi-card' style='border-top: 4px solid #2563eb;'><div class='kpi-title'>Transaksi Berjalan</div><div class='kpi-value'>{s_curr['ca']:.2f} Md USD</div></div>", unsafe_allow_html=True)
-        c2.markdown(f"<div class='kpi-card' style='border-top: 4px solid #16a34a;'><div class='kpi-title'>Ekspor Barang (fob)</div><div class='kpi-value'>{s_curr['exp']:.1f} Md USD</div></div>", unsafe_allow_html=True)
-        c3.markdown(f"<div class='kpi-card' style='border-top: 4px solid #ea580c;'><div class='kpi-title'>Cadangan Devisa</div><div class='kpi-value'>{s_curr['reserves']:.1f} Md USD</div></div>", unsafe_allow_html=True)
-        c4.markdown(f"<div class='kpi-card' style='border-top: 4px solid #0891b2;'><div class='kpi-title'>Impor Months</div><div class='kpi-value'>{s_curr['bulan_imp']:.2f} Bulan</div></div>", unsafe_allow_html=True)
+    # --- 2. ENGINE SIMULASI (LOGIKA EKONOMI SUDAH DIPERBAIKI) ---
+    def simulate_eksternal_v2(nt, oil, year, scen):
+        b = {k: SCEN[scen][k].get(year, 0) for k in SCEN[scen].keys()}
+        dNT_pct = (nt - b['nt']) / b['nt'] * 100 if b['nt'] else 0
+        dOil_pct = (oil - b['icp']) / b['icp'] * 100 if b['icp'] else 0
+
+        s = b.copy() 
         
-        col_chart1, col_chart2 = st.columns(2)
-        with col_chart1:
+        # BOP: Depresiasi -> Ekspor naik dikit, Impor turun
+        s['exp'] = b['exp'] * (1 + (0.015 * dOil_pct) + (0.005 * dNT_pct))
+        s['imp'] = b['imp'] * (1 + (0.018 * dOil_pct) - (0.008 * dNT_pct)) 
+        s['tradebal'] = s['exp'] + s['imp']
+        s['ca'] = s['tradebal'] + b['svcbal'] + b['primbal'] + b['secbal']
+        s['reserves'] = b['reserves'] + (s['ca'] - b['ca'])
+        s['bulan_imp'] = s['reserves'] / (abs(s['imp']) / 12) if s['imp'] != 0 else 0
+
+        # GDP LOGIC FIXED: NT Naik / Oil Naik -> PDB & Konsumsi Turun
+        s['cons'] = b['cons'] - (0.10 * dNT_pct) - (0.05 * dOil_pct)
+        s['inv'] = b['inv'] - (0.06 * dNT_pct) - (0.03 * dOil_pct)
+        s['gexp'] = b['gexp'] + (0.05 * dNT_pct) + (0.02 * dOil_pct)
+        s['gimp'] = b['gimp'] - (0.04 * dNT_pct) + (0.01 * dOil_pct)
+
+        # Bobot PDB (Kira-kira): Cons 53%, Inv 30%, Exp 22%, Imp 20%
+        d_gdp = (0.53 * (s['cons'] - b['cons'])) + (0.30 * (s['inv'] - b['inv'])) + (0.22 * (s['gexp'] - b['gexp'])) - (0.20 * (s['gimp'] - b['gimp']))
+        s['gdp'] = b['gdp'] + d_gdp
+        s['pdb'] = b['pdb'] * (1 + (d_gdp/100)) # PDB Nominal bergerak sejalan
+
+        # APBN
+        s['rev'] = b['rev'] + (15 * dOil_pct) + (5 * dNT_pct)
+        s['bel'] = b['bel'] + (12 * dOil_pct) + (8 * dNT_pct)
+        s['def'] = s['rev'] - s['bel']
+        s['defpdb'] = (s['def'] / s['pdb']) * 100 if s['pdb'] else 0
+        s['sube'] = b['sube'] + (2 * dOil_pct) + (0.5 * dNT_pct)
+
+        d = {k: s[k] - b[k] for k in b.keys()}
+        return b, s, d
+
+    # --- 3. SIDEBAR KHUSUS EKSTERNAL ---
+    with st.sidebar:
+        st.markdown("<hr style='margin-top:0px; margin-bottom:15px;'>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:12px; font-weight:bold; color:#64748b;'>SKENARIO BASELINE</span>", unsafe_allow_html=True)
+        scen_col1, scen_col2 = st.columns(2)
+        if scen_col1.button("Med", use_container_width=True): st.session_state.scen_val = 'med'
+        if scen_col2.button("High", use_container_width=True): st.session_state.scen_val = 'high'
+        
+        st.info(f"Baseline {st.session_state.scen_val.capitalize()} {st.session_state.year_val}: NT Rp{SCEN[st.session_state.scen_val]['nt'][st.session_state.year_val]:,} / ICP USD {SCEN[st.session_state.scen_val]['icp'][st.session_state.year_val]}".replace(',','.'))
+
+        st.markdown("<span style='font-size:12px; font-weight:bold; color:#64748b;'>INPUT NILAI TUKAR (RP/USD)</span>", unsafe_allow_html=True)
+        st.session_state.nt_val = st.number_input("NT", value=st.session_state.nt_val, step=50, label_visibility="collapsed")
+        
+        st.markdown("<span style='font-size:12px; font-weight:bold; color:#64748b;'>INPUT HARGA MINYAK (USD/BBL)</span>", unsafe_allow_html=True)
+        st.session_state.oil_val = st.number_input("OIL", value=st.session_state.oil_val, step=1, label_visibility="collapsed")
+        
+        st.markdown("<span style='font-size:12px; font-weight:bold; color:#64748b;'>TAHUN PROYEKSI</span>", unsafe_allow_html=True)
+        y1, y2, y3, y4 = st.columns(4)
+        if y1.button("2026", use_container_width=True): st.session_state.year_val = 2026
+        if y2.button("2027", use_container_width=True): st.session_state.year_val = 2027
+        if y3.button("2028", use_container_width=True): st.session_state.year_val = 2028
+        if y4.button("2029", use_container_width=True): st.session_state.year_val = 2029
+
+        st.markdown("<span style='font-size:12px; font-weight:bold; color:#64748b; margin-top:15px; display:block;'>PRESET SKENARIO</span>", unsafe_allow_html=True)
+        p1, p2 = st.columns(2)
+        if p1.button("📊 Base Med", use_container_width=True): 
+            st.session_state.nt_val = SCEN['med']['nt'][st.session_state.year_val]
+            st.session_state.oil_val = SCEN['med']['icp'][st.session_state.year_val]
+            st.session_state.scen_val = 'med'
+        if p2.button("📈 Base High", use_container_width=True):
+            st.session_state.nt_val = SCEN['high']['nt'][st.session_state.year_val]
+            st.session_state.oil_val = SCEN['high']['icp'][st.session_state.year_val]
+            st.session_state.scen_val = 'high'
+        if p1.button("📉 Depresiasi", use_container_width=True): st.session_state.nt_val = 17500
+        if p2.button("🛢️ Minyak Rndh", use_container_width=True): st.session_state.oil_val = 50
+        if p1.button("🔥 Minyak Tgg", use_container_width=True): st.session_state.oil_val = 90
+        if p2.button("⚡ Twin Shock", use_container_width=True): 
+            st.session_state.nt_val = 17500
+            st.session_state.oil_val = 90
+
+        # Eksekusi State Saat Ini untuk Tampilan Delta di Sidebar
+        b_curr, s_curr, delta_curr = simulate_eksternal_v2(st.session_state.nt_val, st.session_state.oil_val, st.session_state.year_val, st.session_state.scen_val)
+        
+        st.markdown("<hr style='margin:15px 0;'>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:12px; font-weight:bold; color:#64748b;'>Δ VS BASELINE TAHUN TERPILIH</span>", unsafe_allow_html=True)
+        col_sd1, col_sd2 = st.columns([6,4])
+        col_sd1.markdown("PDB Growth")
+        color_gdp = "red" if delta_curr['gdp'] < 0 else "green"
+        col_sd2.markdown(f"<span style='color:{color_gdp}; font-weight:bold;'>{delta_curr['gdp']:+.2f}pp</span>", unsafe_allow_html=True)
+        
+        col_sd1, col_sd2 = st.columns([6,4])
+        col_sd1.markdown("Trans. Berjalan")
+        color_ca = "red" if delta_curr['ca'] < 0 else "green"
+        col_sd2.markdown(f"<span style='color:{color_ca}; font-weight:bold;'>{delta_curr['ca']:+.2f} Md</span>", unsafe_allow_html=True)
+
+    # --- 4. MAIN HEADER ---
+    st.markdown("""
+    <div style="display:flex; align-items:center; gap:15px; margin-bottom: 20px;">
+        <div style="background:#2563eb; color:white; padding:8px 15px; border-radius:8px; font-weight:bold;">BOP</div>
+        <div>
+            <h2 style="margin:0; padding:0; font-size:22px; color:#1e293b;">Dashboard Neraca Pembayaran & Pertumbuhan Ekonomi</h2>
+            <div style="color:#64748b; font-size:14px;">Analisis Sensitivitas: Nilai Tukar & Harga Minyak — Interaktif Live Sim</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Helper UI Cards
+    def make_kpi_card(title, value, delta, is_up_good=True, top_color="#2563eb", subtitle="Miliar USD"):
+        color = "#16a34a" if (delta >= 0 and is_up_good) or (delta < 0 and not is_up_good) else "#dc2626"
+        arrow = "▲" if delta >= 0 else "▼"
+        html = f"""
+        <div style="background:white; padding:20px; border-radius:10px; border:1px solid #e2e8f0; border-top:4px solid {top_color}; box-shadow:0 1px 3px rgba(0,0,0,0.05); height:100%;">
+            <div style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:5px;">{title}</div>
+            <div style="font-size:28px; font-weight:800; color:#0f172a; margin-bottom:0px;">{value}</div>
+            <div style="font-size:12px; color:#94a3b8; margin-bottom:10px;">{subtitle}</div>
+            <div style="font-size:13px; font-weight:700; color:{color};">{arrow} {abs(delta):.2f}</div>
+        </div>
+        """
+        return html
+
+    tab1, tab2, tab3 = st.tabs(['📊 Neraca Pembayaran (BOP)', '📈 Pertumbuhan Ekonomi (GDP)', '📋 Tabel Detail'])
+    
+    years_sim = [2026, 2027, 2028, 2029]
+    def get_trend(key): return [simulate_eksternal_v2(st.session_state.nt_val, st.session_state.oil_val, y, st.session_state.scen_val)[1][key] for y in years_sim]
+    def get_base_trend(key): return [simulate_eksternal_v2(st.session_state.nt_val, st.session_state.oil_val, y, st.session_state.scen_val)[0][key] for y in years_sim]
+
+    # ==================== TAB 1: BOP ====================
+    with tab1:
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1: st.markdown(make_kpi_card("Transaksi Berjalan", f"{s_curr['ca']:.2f}", delta_curr['ca'], True, "#2563eb"), unsafe_allow_html=True)
+        with c2: st.markdown(make_kpi_card("Cadangan Devisa", f"{s_curr['reserves']:.1f}", delta_curr['reserves'], True, "#ea580c"), unsafe_allow_html=True)
+        with c3: st.markdown(make_kpi_card("Ekspor Barang", f"{s_curr['exp']:.1f}", delta_curr['exp'], True, "#16a34a"), unsafe_allow_html=True)
+        with c4: st.markdown(make_kpi_card("Impor Barang", f"{s_curr['imp']:.1f}", delta_curr['imp'], False, "#dc2626"), unsafe_allow_html=True)
+        with c5: st.markdown(make_kpi_card("CA / PDB", f"{(s_curr['ca']/s_curr['gdpnom_usd']*100):.2f}%", (s_curr['ca']/s_curr['gdpnom_usd']*100) - (b_curr['ca']/b_curr['gdpnom_usd']*100), True, "#64748b", "% PDB"), unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        ch1, ch2, ch3 = st.columns([1,1,1])
+        
+        with ch1:
+            st.markdown("<div style='background:white; border:1px solid #e2e8f0; border-radius:10px; padding:15px;'><h4 style='font-size:14px; color:#475569;'>🔵 TRANSAKSI BERJALAN (MD USD)</h4>", unsafe_allow_html=True)
             fig_ca = go.Figure(data=[
                 go.Bar(name='Baseline', x=years_sim, y=get_base_trend('ca'), marker_color='#93c5fd'),
                 go.Bar(name='Simulasi', x=years_sim, y=get_trend('ca'), marker_color='#2563eb')
             ])
-            fig_ca.update_layout(title='Transaksi Berjalan (Md USD)', template='plotly_white', margin=dict(l=20, r=20, t=40, b=20))
+            fig_ca.update_layout(template='plotly_white', margin=dict(l=0, r=0, t=30, b=0), height=250, legend=dict(orientation="h", y=1.2))
             st.plotly_chart(fig_ca, use_container_width=True)
-            
-        with col_chart2:
-            fig_res = go.Figure(data=[
-                go.Scatter(name='Baseline', x=years_sim, y=get_base_trend('reserves'), mode='lines', line=dict(dash='dash', color='#9ca3af')),
-                go.Scatter(name='Simulasi', x=years_sim, y=get_trend('reserves'), mode='lines+markers', line=dict(color='#ea580c', width=3))
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with ch2:
+            st.markdown("<div style='background:white; border:1px solid #e2e8f0; border-radius:10px; padding:15px;'><h4 style='font-size:14px; color:#475569;'>🟢 EKSPOR VS IMPOR BARANG</h4>", unsafe_allow_html=True)
+            fig_ei = go.Figure(data=[
+                go.Bar(name='Ekspor Base', x=years_sim, y=get_base_trend('exp'), marker_color='#bbf7d0'),
+                go.Bar(name='Ekspor Sim', x=years_sim, y=get_trend('exp'), marker_color='#16a34a'),
+                go.Bar(name='Impor Base', x=years_sim, y=get_base_trend('imp'), marker_color='#fecaca'),
+                go.Bar(name='Impor Sim', x=years_sim, y=get_trend('imp'), marker_color='#dc2626')
             ])
-            fig_res.update_layout(title='Cadangan Devisa (Md USD)', template='plotly_white', margin=dict(l=20, r=20, t=40, b=20))
+            fig_ei.update_layout(template='plotly_white', margin=dict(l=0, r=0, t=30, b=0), height=250, barmode='group', legend=dict(orientation="h", y=1.2))
+            st.plotly_chart(fig_ei, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with ch3:
+            st.markdown("<div style='background:white; border:1px solid #e2e8f0; border-radius:10px; padding:15px;'><h4 style='font-size:14px; color:#475569;'>🟠 CADANGAN DEVISA (MD USD)</h4>", unsafe_allow_html=True)
+            fig_res = go.Figure(data=[
+                go.Scatter(name='Baseline', x=years_sim, y=get_base_trend('reserves'), mode='lines+markers', line=dict(dash='dash', color='#cbd5e1', width=3), marker=dict(size=8)),
+                go.Scatter(name='Simulasi', x=years_sim, y=get_trend('reserves'), mode='lines+markers', line=dict(color='#ea580c', width=4), marker=dict(size=10))
+            ])
+            fig_res.update_layout(template='plotly_white', margin=dict(l=0, r=0, t=30, b=0), height=250, legend=dict(orientation="h", y=1.2))
             st.plotly_chart(fig_res, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
+        # Sensitivity Chart
+        st.markdown("<div style='background:white; border:1px solid #e2e8f0; border-radius:10px; padding:20px; margin-top:15px;'><h4 style='font-size:14px; color:#475569;'>📉 KURVA SENSITIVITAS CA TERHADAP NILAI TUKAR</h4>", unsafe_allow_html=True)
+        nt_range = np.linspace(12000, 24000, 20)
+        ca_curve = [simulate_eksternal_v2(nt, st.session_state.oil_val, st.session_state.year_val, st.session_state.scen_val)[1]['ca'] for nt in nt_range]
+        
+        fig_sens = go.Figure()
+        fig_sens.add_trace(go.Scatter(x=nt_range, y=ca_curve, mode='lines', name='CA (Md USD)', line=dict(color='#3b82f6', width=4)))
+        fig_sens.add_trace(go.Scatter(x=[st.session_state.nt_val], y=[s_curr['ca']], mode='markers', name='Posisi Saat Ini', marker=dict(color='#ea580c', size=14, symbol='circle')))
+        fig_sens.update_layout(template='plotly_white', height=300, margin=dict(l=0, r=0, t=30, b=0), xaxis_title="Nilai Tukar (Rp/USD)", legend=dict(orientation="h", y=1.1))
+        st.plotly_chart(fig_sens, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+    # ==================== TAB 2: GDP ====================
     with tab2:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-        c1.markdown(f"<div class='kpi-card' style='border-top: 4px solid #16a34a;'><div class='kpi-title'>PDB Growth (Riil)</div><div class='kpi-value'>{s_curr['gdp']:.2f} %</div></div>", unsafe_allow_html=True)
-        c2.markdown(f"<div class='kpi-card' style='border-top: 4px solid #2563eb;'><div class='kpi-title'>Ekspor B&J (Aktif)</div><div class='kpi-value'>{s_curr['gexp']:.2f} %</div></div>", unsafe_allow_html=True)
-        c3.markdown(f"<div class='kpi-card' style='border-top: 4px solid #dc2626;'><div class='kpi-title'>Impor B&J (Aktif)</div><div class='kpi-value'>{s_curr['gimp']:.2f} %</div></div>", unsafe_allow_html=True)
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1: st.markdown(make_kpi_card("PDB Growth", f"{s_curr['gdp']:.2f}%", delta_curr['gdp'], True, "#16a34a", "% YoY"), unsafe_allow_html=True)
+        with c2: st.markdown(make_kpi_card("Konsumsi RT", f"{s_curr['cons']:.2f}%", delta_curr['cons'], True, "#3b82f6", "% YoY"), unsafe_allow_html=True)
+        with c3: st.markdown(make_kpi_card("PMTB (Investasi)", f"{s_curr['inv']:.2f}%", delta_curr['inv'], True, "#ea580c", "% YoY"), unsafe_allow_html=True)
+        with c4: st.markdown(make_kpi_card("Ekspor B&J", f"{s_curr['gexp']:.2f}%", delta_curr['gexp'], True, "#10b981", "% YoY"), unsafe_allow_html=True)
+        with c5: st.markdown(make_kpi_card("Impor B&J", f"{s_curr['gimp']:.2f}%", delta_curr['gimp'], False, "#dc2626", "% YoY"), unsafe_allow_html=True)
         
-        fig_gdp = go.Figure(data=[
-            go.Scatter(name='Baseline', x=years_sim, y=get_base_trend('gdp'), mode='lines', line=dict(dash='dash', color='#9ca3af')),
-            go.Scatter(name='Simulasi', x=years_sim, y=get_trend('gdp'), mode='lines+markers', line=dict(color='#16a34a', width=3))
-        ])
-        fig_gdp.update_layout(title='Pertumbuhan PDB Riil (%)', template='plotly_white', margin=dict(l=20, r=20, t=40, b=20))
-        st.plotly_chart(fig_gdp, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        ch1, ch2, ch3 = st.columns([1.2, 1.2, 1])
+        
+        with ch1:
+            st.markdown("<div style='background:white; border:1px solid #e2e8f0; border-radius:10px; padding:15px;'><h4 style='font-size:14px; color:#475569;'>🟢 PERTUMBUHAN PDB (%)</h4>", unsafe_allow_html=True)
+            fig_gdp = go.Figure(data=[
+                go.Scatter(name='Baseline PDB%', x=years_sim, y=get_base_trend('gdp'), mode='lines+markers', line=dict(dash='dash', color='#cbd5e1', width=3), marker=dict(size=8)),
+                go.Scatter(name='Simulasi PDB%', x=years_sim, y=get_trend('gdp'), mode='lines+markers', line=dict(color='#16a34a', width=4), marker=dict(size=10, symbol='circle-open', line_width=3))
+            ])
+            fig_gdp.update_layout(template='plotly_white', margin=dict(l=0, r=0, t=30, b=0), height=250, legend=dict(orientation="h", y=1.2))
+            st.plotly_chart(fig_gdp, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    with tab3:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        c1, c2, c3, c4 = st.columns(4)
-        c1.markdown(f"<div class='kpi-card' style='border-top: 4px solid #2563eb;'><div class='kpi-title'>Pendapatan Negara</div><div class='kpi-value'>{s_curr['rev']:,.0f} T</div></div>".replace(',', '.'), unsafe_allow_html=True)
-        c2.markdown(f"<div class='kpi-card' style='border-top: 4px solid #dc2626;'><div class='kpi-title'>Belanja Negara</div><div class='kpi-value'>{s_curr['bel']:,.0f} T</div></div>".replace(',', '.'), unsafe_allow_html=True)
-        c3.markdown(f"<div class='kpi-card' style='border-top: 4px solid #7c3aed;'><div class='kpi-title'>Defisit / PDB</div><div class='kpi-value'>{s_curr['defpdb']:.2f} %</div></div>", unsafe_allow_html=True)
-        c4.markdown(f"<div class='kpi-card' style='border-top: 4px solid #ea580c;'><div class='kpi-title'>Subsidi Energi</div><div class='kpi-value'>{s_curr['sube']:,.0f} T</div></div>".replace(',', '.'), unsafe_allow_html=True)
+        with ch2:
+            st.markdown("<div style='background:white; border:1px solid #e2e8f0; border-radius:10px; padding:15px;'><h4 style='font-size:14px; color:#475569;'>🔵 KOMPONEN PDB: CONS, INV, EXP</h4>", unsafe_allow_html=True)
+            fig_comp = go.Figure(data=[
+                go.Bar(name='Konsumsi', x=years_sim, y=get_trend('cons'), marker_color='#93c5fd'),
+                go.Bar(name='PMTB', x=years_sim, y=get_trend('inv'), marker_color='#fdba74'),
+                go.Bar(name='Ekspor B&J', x=years_sim, y=get_trend('gexp'), marker_color='#86efac')
+            ])
+            fig_comp.update_layout(template='plotly_white', margin=dict(l=0, r=0, t=30, b=0), height=250, barmode='group', legend=dict(orientation="h", y=1.2))
+            st.plotly_chart(fig_comp, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with ch3:
+            st.markdown("<div style='background:white; border:1px solid #e2e8f0; border-radius:10px; padding:15px;'><h4 style='font-size:14px; color:#475569;'>📉 SENSITIVITAS PDB VS NILAI TUKAR</h4>", unsafe_allow_html=True)
+            gdp_curve = [simulate_eksternal_v2(nt, st.session_state.oil_val, st.session_state.year_val, st.session_state.scen_val)[1]['gdp'] for nt in nt_range]
+            fig_gdp_sens = go.Figure()
+            fig_gdp_sens.add_trace(go.Scatter(x=nt_range, y=gdp_curve, mode='lines', name='PDB Growth (%)', line=dict(color='#16a34a', width=4)))
+            fig_gdp_sens.add_trace(go.Scatter(x=[st.session_state.nt_val], y=[s_curr['gdp']], mode='markers', name='Posisi Saat Ini', marker=dict(color='#ea580c', size=14)))
+            fig_gdp_sens.update_layout(template='plotly_white', height=250, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", y=1.2))
+            st.plotly_chart(fig_gdp_sens, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # Tabel Mekanisme Transmisi
+        st.markdown("<div style='background:white; border:1px solid #e2e8f0; border-radius:10px; padding:20px; margin-top:15px;'><h4 style='font-size:14px; color:#475569;'>🟠 MEKANISME TRANSMISI: NILAI TUKAR & HARGA MINYAK ➔ PDB</h4>", unsafe_allow_html=True)
+        t1, t2 = st.columns(2)
         
-        fig_def = go.Figure(data=[
-            go.Bar(name='Baseline', x=years_sim, y=get_base_trend('def'), marker_color='#c4b5fd'),
-            go.Bar(name='Simulasi', x=years_sim, y=get_trend('def'), marker_color='#7c3aed')
-        ])
-        fig_def.update_layout(title='Defisit APBN (Rp Triliun)', template='plotly_white', barmode='group', margin=dict(l=20, r=20, t=40, b=20))
-        st.plotly_chart(fig_def, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # Simulasi Hitungan Transmisi (Visual Only)
+        dNT_pct = (st.session_state.nt_val - b_curr['nt']) / b_curr['nt'] * 100 if b_curr['nt'] else 0
+        dOil_pct = (st.session_state.oil_val - b_curr['icp']) / b_curr['icp'] * 100 if b_curr['icp'] else 0
+        
+        with t1:
+            st.markdown("**Jalur Nilai Tukar ke PDB**")
+            html_t1 = f"""
+            <table style="width:100%; border-collapse: collapse; font-size:14px;">
+                <tr style="border-bottom:1px solid #eee;"><td>Daya saing ekspor non-migas</td><td align="right" style="color:green; font-weight:bold;">+{max(0.05 * dNT_pct, 0):.2f}pp</td></tr>
+                <tr style="border-bottom:1px solid #eee;"><td>Substitusi impor (volume turun)</td><td align="right" style="color:green; font-weight:bold;">+{max(0.04 * dNT_pct, 0):.2f}pp</td></tr>
+                <tr style="border-bottom:1px solid #eee;"><td>Konsumsi (tekanan inflasi impor)</td><td align="right" style="color:red; font-weight:bold;">{-0.10 * dNT_pct:.2f}pp</td></tr>
+                <tr style="border-bottom:1px solid #eee;"><td>Investasi (ketidakpastian/biaya modal)</td><td align="right" style="color:red; font-weight:bold;">{-0.06 * dNT_pct:.2f}pp</td></tr>
+                <tr><td><b>Total Δ PDB via NT</b></td><td align="right"><b>{((-0.10)+(-0.06)+(0.05)+(0.04)) * dNT_pct:.2f}pp</b></td></tr>
+            </table>
+            """
+            st.markdown(html_t1, unsafe_allow_html=True)
+            
+        with t2:
+            st.markdown("**Jalur Harga Minyak ke PDB**")
+            html_t2 = f"""
+            <table style="width:100%; border-collapse: collapse; font-size:14px;">
+                <tr style="border-bottom:1px solid #eee;"><td>Ekspor migas (pendapatan)</td><td align="right" style="color:green; font-weight:bold;">+{max(0.02 * dOil_pct, 0):.2f}pp</td></tr>
+                <tr style="border-bottom:1px solid #eee;"><td>Tagihan impor BBM (beban)</td><td align="right" style="color:red; font-weight:bold;">{-0.01 * dOil_pct:.2f}pp</td></tr>
+                <tr style="border-bottom:1px solid #eee;"><td>Biaya produksi / investasi</td><td align="right" style="color:red; font-weight:bold;">{-0.03 * dOil_pct:.2f}pp</td></tr>
+                <tr style="border-bottom:1px solid #eee;"><td>Daya beli RT (harga BBM)</td><td align="right" style="color:red; font-weight:bold;">{-0.05 * dOil_pct:.2f}pp</td></tr>
+                <tr><td><b>Total Δ PDB via Minyak</b></td><td align="right"><b>{((0.02)+(-0.01)+(-0.03)+(-0.05)) * dOil_pct:.2f}pp</b></td></tr>
+            </table>
+            """
+            st.markdown(html_t2, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+    # ==================== TAB 3: TABEL DETAIL ====================
+    with tab3:
+        st.markdown("<div style='background:white; border:1px solid #e2e8f0; border-radius:10px; padding:20px;'><h4 style='font-size:16px; color:#1e293b; margin-bottom:20px;'>🔵 TABEL LENGKAP: BOP & GDP — BASELINE VS SIMULASI</h4>", unsafe_allow_html=True)
+        
+        def row_html(label, b_val, s_val, unit, is_bold=False, is_title=False):
+            d_abs = s_val - b_val
+            d_pct = (d_abs / abs(b_val) * 100) if b_val != 0 else 0
+            c_abs = "green" if d_abs >= 0 else "red"
+            c_pct = "green" if d_pct >= 0 else "red"
+            fw = "bold" if is_bold else "normal"
+            bg = "#f8fafc" if is_title else "white"
+            color_title = "#2563eb" if is_title else "#334155"
+            
+            return f"""
+            <tr style="border-bottom:1px solid #e2e8f0; background:{bg};">
+                <td style="padding:12px; font-weight:{fw}; color:{color_title};">{label}</td>
+                <td align="right" style="padding:12px;">{b_val:,.2f}</td>
+                <td align="right" style="padding:12px; font-weight:bold; color:#0f172a;">{s_val:,.2f}</td>
+                <td align="right" style="padding:12px; color:{c_abs}; font-weight:bold;">{d_abs:+.2f}</td>
+                <td align="right" style="padding:12px; color:{c_pct}; font-weight:bold;">{d_pct:+.1f}%</td>
+                <td align="right" style="padding:12px; color:#64748b; font-size:12px;">{unit}</td>
+            </tr>
+            """
+            
+        html_table = f"""
+        <table style="width:100%; border-collapse: collapse; font-size:14px; font-family:sans-serif;">
+            <tr style="border-bottom:2px solid #cbd5e1; color:#64748b; font-size:12px;">
+                <th align="left" style="padding:12px;">INDIKATOR</th><th align="right">BASELINE</th><th align="right">SIMULASI</th><th align="right">Δ ABSOLUT</th><th align="right">Δ %</th><th align="right">SATUAN</th>
+            </tr>
+            {row_html("I. Transaksi Berjalan", b_curr['ca'], s_curr['ca'], "Md USD", True, True)}
+            {row_html("Neraca Barang", b_curr['tradebal'], s_curr['tradebal'], "Md USD")}
+            {row_html("Ekspor (fob)", b_curr['exp'], s_curr['exp'], "Md USD")}
+            {row_html("Impor (fob)", b_curr['imp'], s_curr['imp'], "Md USD")}
+            {row_html("Neraca Jasa", b_curr['svcbal'], s_curr['svcbal'], "Md USD")}
+            {row_html("Pendapatan Primer", b_curr['primbal'], s_curr['primbal'], "Md USD")}
+            {row_html("Pendapatan Sekunder", b_curr['secbal'], s_curr['secbal'], "Md USD")}
+            {row_html("II. Transaksi Modal", b_curr['capbal'], s_curr['capbal'], "Md USD", True, True)}
+            {row_html("III. Transaksi Finansial", b_curr['finbal'], s_curr['finbal'], "Md USD", True, True)}
+            {row_html("IV. Total (I+II+III)", b_curr['total'], s_curr['total'], "Md USD", True, True)}
+            {row_html("Cadangan Devisa", b_curr['reserves'], s_curr['reserves'], "Md USD", True, True)}
+            {row_html("Bulan Impor", b_curr['bulan_imp'], s_curr['bulan_imp'], "Bulan", True, True)}
+            {row_html("★ PDB Growth (GDP Riil)", b_curr['gdp'], s_curr['gdp'], "%", True, True)}
+        </table>
+        """
+        st.markdown(html_table, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ==========================================
 # MODUL 3: EKONOMI DAERAH (WIP)
 # ==========================================
 elif main_menu == "📍 Ekonomi Daerah (WIP)":
     st.markdown("### 📍 Command Center: Ekonomi Kewilayahan")
-    st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")
+    st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")")
