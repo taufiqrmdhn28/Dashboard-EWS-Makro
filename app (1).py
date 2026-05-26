@@ -493,13 +493,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-with st.sidebar:
-    st.markdown("### 🎛️ MENU UTAMA")
-    main_menu = st.radio(
-        "Pilih Modul Analisis:",
-        ["📊 Makro Nasional (DFM)", "🌍 Sektor Eksternal & Fiskal", "📍 Ekonomi Daerah (WIP)"],
-        index=0
-    )
+main_menu = st.radio(
+    "Pilih Modul Analisis:",
+    ["📊 Makro Nasional (DFM)", "🌍 Sektor Eksternal & Fiskal", "📍 Ekonomi Daerah (WIP)"],
+    horizontal=True,
+    label_visibility="collapsed"
+)
+st.markdown("---")
     
     if main_menu == "🌍 Sektor Eksternal & Fiskal":
         st.divider()
