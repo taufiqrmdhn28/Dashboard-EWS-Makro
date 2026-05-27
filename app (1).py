@@ -35,58 +35,161 @@ def make_signature(view, avg, target, monthly_info, daily_info, ext_info):
     raw_str = f"{view}_{avg:.2f}_{target}_{monthly_info}_{daily_info}_{ext_info}"
     return hashlib.md5(raw_str.encode()).hexdigest()
 
-# ==========================================
-# 1. SETUP & DESIGN GLOBAL
-# ==========================================
-st.set_page_config(page_title="Macro AI Command Center", layout="wide", page_icon="🇮🇩", initial_sidebar_state="collapsed")
-
-st.markdown("""
-<style>
-    .stApp { background: radial-gradient(circle at 10% 20%, rgb(242, 243, 247) 0%, rgb(215, 221, 232) 90.2%); }
-    .glass-card {
-        background: rgba(255, 255, 255, 0.65);
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
-        backdrop-filter: blur(10px);
-        border-radius: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.7);
-        padding: 24px;
-        margin-bottom: 24px;
-    }
-    .card-title { font-size: 13px; color: #444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .card-value { font-size: 26px; color: #111; font-weight: 800; margin: 4px 0; }
-    .badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; margin-right: 6px; }
-    .badge-green { background: rgba(212, 237, 218, 0.8); color: #155724; }
-    .badge-red { background: rgba(248, 215, 218, 0.8); color: #721c24; }
-    .badge-neutral { background: rgba(226, 227, 229, 0.8); color: #383d41; }
-    h1 { color: #002d72 !important; }
-    
-    .main-header {
-        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
-        color: white; padding: 20px; border-radius: 12px;
-        margin-bottom: 20px; display: flex; align-items: center; gap: 14px;
-    }
-    .logo-box {
-        background: white; color: #1d4ed8; width: 42px; height: 42px;
-        border-radius: 8px; display: flex; align-items: center;
-        justify-content: center; font-weight: 800; font-size: 16px; flex-shrink: 0;
-    }
-    .hdr-title { font-size: 20px; font-weight: 700; }
-    .hdr-sub   { font-size: 13px; opacity: 0.8; margin-top: 2px; }
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<div class="main-header">
-    <div class="logo-box">ID</div>
-    <div>
-        <div class="hdr-title">🇮🇩 National Economic Command Center — BAPPENAS RI</div>
-        <div class="hdr-sub">Sistem Pendukung Keputusan Strategis & Orkestrasi Kebijakan Kementerian/Lembaga</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
 
 # ===============================================================================
-# DATA BASELINE SEKTOR EKSTERNAL & FISKAL
+# 1. DATA LOADING FUNGSI (HARUS DI ATAS AGAR TIDAK ERROR)
+# ===============================================================================
+@st.cache_data
+def load_data():
+    try:
+        df_target = pd.read_excel(file_makro, sheet_name=0)
+        df_triwulan = pd.read_excel(file_makro, sheet_name=1)
+        df_makro = pd.read_excel(file_makro, sheet_name=2)
+        df_hist_gdp = pd.read_excel(file_adb, sheet_name=2)
+        return df_target, df_triwulan, df_makro, df_hist_gdp
+    except Exception as e:
+        st.error(f"Error Loading Data: {e}")
+        return None, None, None, None
+
+@st.cache_data(ttl=3600)
+def load_daily_data():
+    try:
+        url = "https://docs.google.com/spreadsheets/d/1wM0lHYqNTgf4Jo4AMCDakWnwqF1lVg-7/export?format=xlsx&gid=1981545536"
+        df_daily = pd.read_excel(url, engine="openpyxl")
+        date_col = 'Tanggal' if 'Tanggal' in df_daily.columns else df_daily.columns[0]
+        df_daily[date_col] = pd.to_datetime(df_daily[date_col])
+        df_daily = df_daily.sort_values(by=date_col)
+        return df_daily, date_col
+    except Exception as e:
+        st.warning(f"⚠️ Gagal sinkronisasi data Google Sheets. Info Error: {e}")
+        return None, None
+
+# EKSEKUSI DATA LOADING
+df_target, df_triwulan, df_makro, df_hist_gdp = load_data()
+df_daily, date_col_daily = load_daily_data()
+
+
+# ===============================================================================
+# 2. ENGINE DFM NOWCASTING (MAKRO NASIONAL)
+# ===============================================================================
+def apply_matlab_transformation(series, j1, j2, j3, freq='M'):
+    out = series.copy().astype(float)
+    if j1 == 1:
+        out = out.mask(out <= 0, np.nan)
+        out = 100 * np.log(out)
+    if j2 == 1:
+        out = out.diff(1)
+    elif j3 == 1:
+        lags = 12 if freq == 'M' else 4
+        out = out.diff(lags)
+    return out
+
+def build_ragged_vintage(data_full, df_cal, indicator_col, vintage_cols, v_date, obs_cutoff):
+    vintage = data_full[data_full.index <= obs_cutoff].copy()
+    vcols_sorted = sorted([c for c in vintage_cols if c <= obs_cutoff])
+    v_col_key = vcols_sorted[-1] if vcols_sorted else None
+    if v_col_key is None: return vintage
+    for _, row in df_cal.iterrows():
+        ind = row[indicator_col]
+        if ind not in vintage.columns: continue
+        rd = pd.to_datetime(row[v_col_key], errors="coerce")
+        if pd.notna(rd) and rd > v_date:
+            mask_from = rd.replace(day=1) - pd.DateOffset(months=1)
+            vintage.loc[vintage.index >= mask_from, ind] = np.nan
+    return vintage
+
+def get_prediction_value(pred_means, target, quarter):
+    if target not in pred_means.columns: return np.nan
+    q_end = quarter.to_timestamp(how="end").normalize()
+    q_start = quarter.to_timestamp(how="start")
+    for candidate in [q_start, q_end, q_start.replace(day=1), q_end.replace(day=1)]:
+        if candidate in pred_means.index:
+            return float(pred_means.loc[candidate, target])
+    return np.nan
+
+def calculate_annual_nowcast(pred_means, target_var, cutoff):
+    year = cutoff.year
+    vals = [get_prediction_value(pred_means, target_var, pd.Period(year=year, quarter=q, freq='Q')) for q in range(1, 5)]
+    vals = [v for v in vals if pd.notna(v)]
+    return np.mean(vals) if len(vals) == 4 else np.nan
+
+@st.cache_data(show_spinner="⚙️ DFM Engine: Menghasilkan Histori Prediksi & Sinkronisasi Data Actual...")
+def run_full_dfm_replication():
+    try:
+        df_m_raw = pd.read_excel(file_adb, sheet_name='MonthlyData', index_col=0, parse_dates=True)
+        df_q_raw = pd.read_excel(file_adb, sheet_name='QuarterlyData', index_col=0, parse_dates=True)
+        df_cal = pd.read_excel(file_adb, sheet_name='Calendar')
+        info_m = pd.read_excel(file_adb, sheet_name='InfoM')
+        info_q = pd.read_excel(file_adb, sheet_name='InfoQ')
+        
+        if "INCLUDE" in df_cal.columns: df_cal = df_cal[df_cal["INCLUDE"] == 1].reset_index(drop=True)
+        indicator_col = df_cal.columns[0]
+        vintage_cols = [pd.to_datetime(c) for c in df_cal.columns[2:]]
+
+        processed_data = {}
+        for _, row in info_m[info_m['INCLUDED'] == 1].iterrows():
+            name = row['Indicator Code']
+            if name in df_m_raw.columns:
+                processed_data[name] = apply_matlab_transformation(df_m_raw[name], row['log'], row['MoM'], row['YoY'], 'M')
+        for _, row in info_q[info_q['INCLUDED'] == 1].iterrows():
+            name = row['Indicator Code']
+            if name in df_q_raw.columns:
+                s = apply_matlab_transformation(df_q_raw[name], row['log'], row['QoQ'], row['YoY'], 'Q')
+                processed_data[name] = s
+
+        data_full = pd.DataFrame(processed_data).replace([np.inf, -np.inf], np.nan).sort_index()
+        data_full.index = pd.to_datetime(data_full.index)
+        data_full_resampled = data_full.resample('MS').first() 
+        target_var = 'RGDP_growth'
+
+        def get_actual_value(ref_period):
+            target_date = ref_period.to_timestamp(how='end').replace(day=1).normalize()
+            if target_date in data_full.index:
+                val = data_full.loc[target_date, target_var]
+                return val if pd.notna(val) else np.nan
+            return np.nan
+
+        jobs = []
+        seen = set()
+        hari_ini = pd.Timestamp.today().normalize()
+        
+        for vc in vintage_cols:
+            col_name = vc.strftime('%Y-%m-%d 00:00:00') if vc.strftime('%Y-%m-%d 00:00:00') in df_cal.columns else df_cal.columns[2 + vintage_cols.index(vc)]
+            release_dates = pd.to_datetime(df_cal[col_name], errors="coerce").dropna().unique()
+            for rd in sorted(release_dates):
+                if 2023 <= rd.year <= 2026 and rd <= hari_ini and (rd, vc) not in seen:
+                    seen.add((rd, vc))
+                    jobs.append((rd, vc)) 
+        jobs.sort(key=lambda x: x[0])
+
+        results_table = []
+        for actual_v_date, v_date_base in jobs:
+            obs_cutoff = v_date_base.replace(day=1)
+            ref_q = pd.Period(actual_v_date, freq='Q')
+            v_data = build_ragged_vintage(data_full_resampled, df_cal, indicator_col, vintage_cols, actual_v_date, obs_cutoff).dropna(axis=1, how='all')
+            end_m = v_data.drop(columns=[target_var], errors='ignore')
+            q_freq = "QE" if pd.__version__ >= "2.2.0" else "Q"
+            if target_var in v_data.columns: end_q = v_data[[target_var]].resample(q_freq).last()
+            else: end_q = data_full_resampled.loc[data_full_resampled.index <= obs_cutoff, [target_var]].resample(q_freq).last()
+            
+            model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, k_factors=1, factor_orders=1, idiosyncratic_ar=1, standardize=True)
+            res = model.fit(method='em', maxiter=500, tolerance=1e-5, disp=False)
+            means = res.get_prediction(end=res.model.nobs + 24).predicted_mean
+            
+            results_table.append({
+                'Day Prediction': actual_v_date, 'Reference Quarter': ref_q.strftime('%YQ%q'), 'Actual': get_actual_value(ref_q), 
+                'Backcast': get_prediction_value(means, target_var, ref_q - 1), 'Nowcast': get_prediction_value(means, target_var, ref_q),
+                'Forecast': get_prediction_value(means, target_var, ref_q + 1), '2-step': get_prediction_value(means, target_var, ref_q + 2),
+                '3-step': get_prediction_value(means, target_var, ref_q + 3), 'Annual Nowcast': calculate_annual_nowcast(means, target_var, actual_v_date)
+            })
+        return pd.DataFrame(results_table)
+    except Exception as e:
+        st.error(f"Error Replikasi DFM: {e}")
+        return pd.DataFrame()
+
+
+# ===============================================================================
+# 3. DATA BASELINE SEKTOR EKSTERNAL & FISKAL
 # ===============================================================================
 SCEN = {
     "med": {
@@ -161,11 +264,26 @@ SCEN = {
     },
 }
 
-# --- DATA LOADING FUNGSI ---
-df_target, df_triwulan, df_makro, df_hist_gdp = load_data()
-df_daily, date_col_daily = load_daily_data()
+EL = {
+    "bop_exp_nt":      0.15,   "bop_imp_nt":      -0.25,
+    "bop_exp_oil":     0.80,   "bop_imp_oil":      0.95,
+    "bop_svc_nt":      0.05,   "bop_prim_nt":     -0.03,
+    "share_exp_migas": 0.06,   "share_imp_migas":  0.16,
+    "gexp_nt":         0.08,   "gimp_nt":         -0.06,
+    "gexp_oil":        0.025,  "gimp_oil":         0.018,
+    "w_exp":           0.27,   "w_imp":            0.22,
+    "sube_oil":        0.95,   "sube_nt":         -0.15,
+    "bunga_nt":        0.006,
+}
 
-# --- MODUL SIMULASI SEKTOR EKSTERNAL (SENSITIVITAS TERBALIK) ---
+YEARS = [2026, 2027, 2028, 2029]
+
+C = {
+    "blue":    "#2563eb", "green":   "#16a34a", "red":     "#dc2626", "red2":    "#b91c1c",
+    "amber":   "#d97706", "purple":  "#7c3aed", "orange":  "#ea580c", "orange2": "#c2410c",
+    "teal":    "#0891b2", "gray":    "#6e7681",
+}
+
 def simulate_eksternal_v2(nt: float, oil: float, year: int, scen: str):
     D = SCEN[scen]
     b = {k: D[k].get(year, 0) for k in D}
@@ -203,7 +321,6 @@ def simulate_eksternal_v2(nt: float, oil: float, year: int, scen: str):
         b["bulan_imp"] = b["reserves"] / base_imp_mo
         s["bulan_imp"] = s["reserves"] / sim_imp_mo
 
-    # 🔥 FIX SENSITIVITAS REVISI KOOR: NT Naik (Lemah) & Oil Naik -> Sektor Riil Drop
     dGexp_nt  = EL["gexp_nt"]  * dNT_pct
     dGimp_nt  = EL["gimp_nt"]  * dNT_pct
     dGexp_oil = EL["gexp_oil"] * dOil_pct
@@ -212,7 +329,6 @@ def simulate_eksternal_v2(nt: float, oil: float, year: int, scen: str):
     s["gexp"] = b["gexp"] + dGexp_nt + dGexp_oil
     s["gimp"] = b["gimp"] + dGimp_nt + dGimp_oil
     
-    # Efek kontraksi ke sektor riil domestik
     s["cons"] = b["cons"] - (0.04 * abs(dNT_pct)) - (0.02 * abs(dOil_pct)) if dNT_pct > 0 or dOil_pct > 0 else b["cons"]
     s["gov"]  = b["gov"]
     s["inv"]  = b["inv"] - (0.03 * abs(dNT_pct)) - (0.01 * abs(dOil_pct)) if dNT_pct > 0 or dOil_pct > 0 else b["inv"]
@@ -244,91 +360,78 @@ def simulate_eksternal_v2(nt: float, oil: float, year: int, scen: str):
 
     return b, s
 
-# --- ENGINE DFM CODES ---
-def apply_matlab_transformation(series, j1, j2, j3, freq='M'):
-    out = series.copy().astype(float)
-    if j1 == 1:
-        out = out.mask(out <= 0, np.nan)
-        out = 100 * np.log(out)
-    if j2 == 1: out = out.diff(1)
-    elif j3 == 1:
-        lags = 12 if freq == 'M' else 4
-        out = out.diff(lags)
-    return out
+# --- Helper Chart Sektor Eksternal ---
+_BASE_LAYOUT = dict(
+    paper_bgcolor="white", plot_bgcolor="#f8f9fa", font=dict(family="monospace", size=11, color="#4b5563"),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font_size=10,),
+    margin=dict(l=40, r=20, t=50, b=40), height=270,
+    xaxis=dict(gridcolor="#e5e7eb", showgrid=True), yaxis=dict(gridcolor="#e5e7eb", showgrid=True),
+)
+def fig_layout(title: str, barmode: str = None, **kwargs) -> dict:
+    layout = {**_BASE_LAYOUT, "title": dict(text=title, font=dict(size=13)), **kwargs}
+    if barmode: layout["barmode"] = barmode
+    return layout
+def bar_trace(name, x, y, color, opacity=0.75):
+    return go.Bar(name=name, x=x, y=y, marker_color=color, marker_line_width=0, opacity=opacity)
+def line_trace(name, x, y, color, fill=None, fillcolor=None, width=2, size=6):
+    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=color, width=width), marker=dict(size=size, color=color), fill=fill, fillcolor=fillcolor)
+def line_base_trace(name, x, y):
+    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=C["gray"], dash="dash", width=1.5), marker=dict(size=4, color=C["gray"]))
+def dot_trace(name, x, y):
+    return go.Scatter(name=name, x=x, y=y, mode="markers", marker=dict(size=11, color=C["amber"], line=dict(color="white", width=2)))
+def delta_color(val: float) -> str:
+    if val > 0.005:   return "green"
+    if val < -0.005:  return "red"
+    return "gray"
+def metric_delta_color(val: float) -> str:
+    dc = delta_color(val)
+    if dc == "green": return "normal"
+    if dc == "red":   return "inverse"
+    return "off"
 
-def build_ragged_vintage(data_full, df_cal, indicator_col, vintage_cols, v_date, obs_cutoff):
-    vintage = data_full[data_full.index <= obs_cutoff].copy()
-    vcols_sorted = sorted([c for c in vintage_cols if c <= obs_cutoff])
-    v_col_key = vcols_sorted[-1] if vcols_sorted else None
-    if v_col_key is None: return vintage
-    for _, row in df_cal.iterrows():
-        ind = row[indicator_col]
-        if ind not in vintage.columns: continue
-        rd = pd.to_datetime(row[v_col_key], errors="coerce")
-        if pd.notna(rd) and rd > v_date:
-            mask_from = rd.replace(day=1) - pd.DateOffset(months=1)
-            vintage.loc[vintage.index >= mask_from, ind] = np.nan
-    return vintage
+# ===============================================================================
+# UI SETUP & HEADER
+# ===============================================================================
+st.set_page_config(page_title="Macro AI Command Center", layout="wide", page_icon="🇮🇩")
 
-def get_prediction_value(pred_means, target, quarter):
-    if target not in pred_means.columns: return np.nan
-    q_end = quarter.to_timestamp(how="end").normalize()
-    q_start = quarter.to_timestamp(how="start")
-    for candidate in [q_start, q_end, q_start.replace(day=1), q_end.replace(day=1)]:
-        if candidate in pred_means.index: return float(pred_means.loc[candidate, target])
-    return np.nan
+st.markdown("""
+<style>
+    .stApp { background: radial-gradient(circle at 10% 20%, rgb(242, 243, 247) 0%, rgb(215, 221, 232) 90.2%); }
+    .glass-card {
+        background: rgba(255, 255, 255, 0.65);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7);
+        padding: 24px; margin-bottom: 24px;
+    }
+    .main-header {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+        color: white; padding: 20px; border-radius: 12px;
+        margin-bottom: 20px; display: flex; align-items: center; gap: 14px;
+    }
+    .logo-box {
+        background: white; color: #1d4ed8; width: 42px; height: 42px;
+        border-radius: 8px; display: flex; align-items: center;
+        justify-content: center; font-weight: 800; font-size: 16px; flex-shrink: 0;
+    }
+    .hdr-title { font-size: 20px; font-weight: 700; }
+    .hdr-sub   { font-size: 13px; opacity: 0.8; margin-top: 2px; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; margin-right: 6px; }
+    .badge-green { background: rgba(212, 237, 218, 0.8); color: #155724; }
+    .badge-red { background: rgba(248, 215, 218, 0.8); color: #721c24; }
+    .badge-neutral { background: rgba(226, 227, 229, 0.8); color: #383d41; }
+</style>
+""", unsafe_allow_html=True)
 
-def calculate_annual_nowcast(pred_means, target_var, cutoff):
-    year = cutoff.year
-    vals = [get_prediction_value(pred_means, target_var, pd.Period(year=year, quarter=q, freq='Q')) for q in range(1, 5)]
-    vals = [v for v in vals if pd.notna(v)]
-    return np.mean(vals) if len(vals) == 4 else np.nan
-
-def run_full_dfm_replication():
-    try:
-        df_m_raw = pd.read_excel(file_adb, sheet_name='MonthlyData', index_col=0, parse_dates=True)
-        df_q_raw = pd.read_excel(file_adb, sheet_name='QuarterlyData', index_col=0, parse_dates=True)
-        df_cal = pd.read_excel(file_adb, sheet_name='Calendar')
-        info_m = pd.read_excel(file_adb, sheet_name='InfoM')
-        info_q = pd.read_excel(file_adb, sheet_name='InfoQ')
-        if "INCLUDE" in df_cal.columns: df_cal = df_cal[df_cal["INCLUDE"] == 1].reset_index(drop=True)
-        indicator_col = df_cal.columns[0]
-        vintage_cols = [pd.to_datetime(c) for c in df_cal.columns[2:]]
-        processed_data = {}
-        for _, row in info_m[info_m['INCLUDED'] == 1].iterrows():
-            name = row['Indicator Code']
-            if name in df_m_raw.columns: processed_data[name] = apply_matlab_transformation(df_m_raw[name], row['log'], row['MoM'], row['YoY'], 'M')
-        for _, row in info_q[info_q['INCLUDED'] == 1].iterrows():
-            name = row['Indicator Code']
-            if name in df_q_raw.columns: processed_data[name] = apply_matlab_transformation(df_q_raw[name], row['log'], row['QoQ'], row['YoY'], 'Q')
-        data_full = pd.DataFrame(processed_data).replace([np.inf, -np.inf], np.nan).sort_index()
-        data_full_resampled = data_full.resample('MS').first()
-        target_var = 'RGDP_growth'
-        def get_actual_value(ref_period):
-            td = ref_period.to_timestamp(how='end').replace(day=1).normalize()
-            return data_full.loc[td, target_var] if td in data_full.index else np.nan
-        jobs, seen, hari_ini = [], set(), pd.Timestamp.today().normalize()
-        for vc in vintage_cols:
-            col_name = vc.strftime('%Y-%m-%d 00:00:00') if vc.strftime('%Y-%m-%d 00:00:00') in df_cal.columns else df_cal.columns[2 + vintage_cols.index(vc)]
-            rds = pd.to_datetime(df_cal[col_name], errors="coerce").dropna().unique()
-            for rd in sorted(rds):
-                if 2023 <= rd.year <= 2026 and rd <= hari_ini and (rd, vc) not in seen:
-                    seen.add((rd, vc)); jobs.append((rd, vc))
-        jobs.sort(key=lambda x: x[0])
-        results_table = []
-        for avd, vdb in jobs:
-            obs_cutoff = vdb.replace(day=1); ref_q = pd.Period(avd, freq='Q')
-            v_data = build_ragged_vintage(data_full_resampled, df_cal, indicator_col, vintage_cols, avd, obs_cutoff).dropna(axis=1, how='all')
-            end_m = v_data.drop(columns=[target_var], errors='ignore')
-            q_freq = "QE" if pd.__version__ >= "2.2.0" else "Q"
-            end_q = v_data[[target_var]].resample(q_freq).last() if target_var in v_data.columns else data_full_resampled.loc[data_full_resampled.index <= obs_cutoff, [target_var]].resample(q_freq).last()
-            model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, k_factors=1, factor_orders=1, idiosyncratic_ar=1, standardize=True)
-            res = model.fit(method='em', maxiter=500, tolerance=1e-5, disp=False)
-            means = res.get_prediction(end=res.model.nobs + 24).predicted_mean
-            results_table.append({'Day Prediction': avd, 'Reference Quarter': ref_q.strftime('%YQ%q'), 'Actual': get_actual_value(ref_q), 'Backcast': get_prediction_value(means, target_var, ref_q - 1), 'Nowcast': get_prediction_value(means, target_var, ref_q), 'Forecast': get_prediction_value(means, target_var, ref_q + 1), '2-step': get_prediction_value(means, target_var, ref_q + 2), '3-step': get_prediction_value(means, target_var, ref_q + 3), 'Annual Nowcast': calculate_annual_nowcast(means, target_var, avd)})
-        return pd.DataFrame(results_table)
-    except Exception as e:
-        return pd.DataFrame()
+st.markdown("""
+<div class="main-header">
+    <div class="logo-box">ID</div>
+    <div>
+        <div class="hdr-title">🇮🇩 National Economic Command Center — BAPPENAS RI</div>
+        <div class="hdr-sub">Sistem Pendukung Keputusan Strategis & Orkestrasi Kebijakan Kementerian/Lembaga</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # =========================================================================
 # 🎛️ STRUKTUR NAVIGASI UTAMA 4 TAB DI ATAS
@@ -347,6 +450,16 @@ heatmap_summary_str = "Data tidak tersedia."
 current_avg = 5.2
 current_target = 5.4
 selected_view = "2026"
+
+# Default state untuk Modul 2 jika tab belum diotak-atik
+if 'nt_val' not in st.session_state: st.session_state.nt_val = 16700
+if 'oil_val' not in st.session_state: st.session_state.oil_val = 65
+if 'year_val' not in st.session_state: st.session_state.year_val = 2026
+if 'scen_val' not in st.session_state: st.session_state.scen_val = 'med'
+
+# Coba simulasi awal untuk ditarik ke Tab AI meskipun Tab 2 belum dibuka
+b_ext_global, s_ext_global = simulate_eksternal_v2(st.session_state.nt_val, st.session_state.oil_val, st.session_state.year_val, st.session_state.scen_val)
+
 
 # =========================================================================
 # TAB 1: MAKRO NASIONAL
@@ -437,9 +550,12 @@ with tab_makro:
                 gap_realisasi = realisasi_bps_ctc - current_target
                 c2.metric("Realisasi BPS (c-t-c)", f"{realisasi_bps_ctc:.2f}%", delta=f"{gap_realisasi:.2f}%")
                 c2.caption("Capaian Triwulan I-2026")
+            else:
+                c2.metric("Realisasi BPS (c-t-c)", "Belum Rilis", delta="-", delta_color="off")
             gap_proyeksi = current_avg - current_target
             c3.metric("Proyeksi DFM (Avg)", f"{current_avg:.2f}%", delta=f"{gap_proyeksi:.2f}%")
-            gap_status = realisasi_bps_ctc - current_target
+            angka_acuan_status = realisasi_bps_ctc if realisasi_bps_ctc is not None else current_avg
+            gap_status = angka_acuan_status - current_target
             c4.metric("Status Capaian", "✅ SESUAI TARGET" if gap_status >= -0.1 else "❌ BELOW TARGET", delta_color="normal" if gap_status >= -0.1 else "inverse")
 
         # RENDER UTAMA PLOTLY JALUR NASIONAL
@@ -455,7 +571,6 @@ with tab_makro:
         fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.1), height=400)
         st.plotly_chart(fig, use_container_width=True)
 
-        # MONITORING BULANAN & HEATMAP TRACKER
         st.markdown("### 🗺️ Tracker Real Sektor & Heatmap Bulanan")
         df_hm = df_makro[df_makro['Tanggal'] >= '2025-01-01'].copy()
         if not df_hm.empty:
@@ -482,15 +597,15 @@ with tab_makro:
             st.plotly_chart(fig_hm, use_container_width=True)
 
 # =========================================================================
-# TAB 2: SEKTOR EKSTERNAL & FISKAL (PLEK KETIPLEK TAMPILAN ASLI REVISI)
+# TAB 2: SEKTOR EKSTERNAL & FISKAL
 # =========================================================================
 with tab_eksternal:
     st.markdown("#### 🌍 Simulasi Dampak Sektor Eksternal & Transmisi Fiskal")
     
     col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 2])
-    scen_ext = col_ctrl1.radio("Skenario Utama:", ["med", "high"], horizontal=True, format_func=lambda x: "Medium (Med)" if x == "med" else "High Skenario")
+    scen_ext = col_ctrl1.radio("Skenario Utama:", ["med", "high"], horizontal=True, format_func=lambda x: "Medium (Med)" if x == "med" else "High Skenario", key="rad_scen")
     yr_ext = col_ctrl2.select_slider("Horizon Proyeksi:", options=YEARS, value=2026, key="yr_slider_ext")
-    preset_ext = col_ctrl3.selectbox("Pilih Preset Simulasi Cepat:", ["-- pilih --", "📊 Base Med Skenario", "📈 Base High Skenario", "📉 Depresiasi Guncangan (NT 19.500)", "🛢 Krisis Minyak Rendah ($40)", "🔥 Booming Minyak Tinggi ($100)", "⚡ Twin Shock (NT 20.000, ICP $100)"])
+    preset_ext = col_ctrl3.selectbox("Pilih Preset Simulasi Cepat:", ["-- pilih --", "📊 Base Med Skenario", "📈 Base High Skenario", "📉 Depresiasi Guncangan (NT 19.500)", "🛢 Krisis Minyak Rendah ($40)", "🔥 Booming Minyak Tinggi ($100)", "⚡ Twin Shock (NT 20.000, ICP $100)"], key="sel_preset")
 
     D_ext = SCEN[scen_ext]
     nt_default = D_ext["nt"][yr_ext]; icp_default = D_ext["icp"][yr_ext]
@@ -502,11 +617,14 @@ with tab_eksternal:
     else:                        nt_init, oil_init = nt_default, icp_default
 
     col_inp1, col_inp2 = st.columns(2)
-    nt_ext = col_inp1.number_input("Input Parameter Nilai Tukar (Rp/USD):", min_value=10_000, max_value=30_000, value=nt_init, step=50)
-    oil_ext = col_inp2.number_input("Input Parameter Harga Minyak ICP (USD/bbl):", min_value=20, max_value=150, value=oil_init, step=1)
+    st.session_state.nt_val = col_inp1.number_input("Input Parameter Nilai Tukar (Rp/USD):", min_value=10_000, max_value=30_000, value=nt_init, step=50, key="inp_nt")
+    st.session_state.oil_val = col_inp2.number_input("Input Parameter Harga Minyak ICP (USD/bbl):", min_value=20, max_value=150, value=oil_init, step=1, key="inp_oil")
+    st.session_state.year_val = yr_ext
+    st.session_state.scen_val = scen_ext
 
     # Jalankan Simulasi Inti 1:1 Sesuai Dokumen Resmi Sektor Eksternal
-    b_ext, s_ext = simulate_eksternal(nt_ext, oil_ext, yr_ext, scen_ext)
+    b_ext, s_ext = simulate_eksternal_v2(st.session_state.nt_val, st.session_state.oil_val, st.session_state.year_val, st.session_state.scen_val)
+    b_ext_global, s_ext_global = b_ext, s_ext # Simpan ke global untuk ditarik AI di Tab 4
     
     # RENDER KPI MATRIKS SEKTOR EKSTERNAL
     st.markdown("<br>", unsafe_allow_html=True)
@@ -528,7 +646,7 @@ with tab_eksternal:
     keys_sim = ["ca", "exp", "imp", "reserves", "gdp", "gexp", "gimp", "def"]
     R_ext = {k: {"b": [], "s": []} for k in keys_sim}
     for y in YEARS:
-        bb, ss = simulate_eksternal(nt_ext, oil_ext, y, scen_ext)
+        bb, ss = simulate_eksternal_v2(st.session_state.nt_val, st.session_state.oil_val, y, st.session_state.scen_val)
         for k in keys_sim:
             R_ext[k]["b"].append(round(bb[k], 2)); R_ext[k]["s"].append(round(ss[k], 2))
 
@@ -562,6 +680,7 @@ with tab_daerah:
     st.markdown("### 📍 Modul 3: Command Center Ekonomi Kewilayahan & Provinsi")
     st.info("🚧 Status: Terbuka untuk Alokasi Pengkodingan MRIO / IRIO Wilayah. Menunggu sinkronisasi pemicu data sektoral BPS Regional.")
 
+
 # =========================================================================
 # 📊 TAB 4: NEW EXECUTIVE SUMMARY (PUSAT SINTESIS AI & DOWNOLAD PDF)
 # =========================================================================
@@ -569,7 +688,7 @@ with tab_ai:
     st.markdown("### 🧠 Modul Laporan Eksekutif Utama & Sinkronisasi Multimodul")
     st.caption("Fungsi ini menyatukan indikator jangka pendek dari Modul 1 dan hasil simulasi sensitivitas guncangan global dari Modul 2 menjadi dokumen teknokratis untuk Bapak Menteri.")
     
-    signature_super = make_signature(selected_view, current_avg, current_target, heatmap_summary_str, daily_summary_str, f"{nt_ext}_{oil_ext}_{s_ext['gdp']}")
+    signature_super = make_signature(selected_view, current_avg, current_target, heatmap_summary_str, daily_summary_str, f"{st.session_state.nt_val}_{st.session_state.oil_val}_{s_ext_global['gdp']}")
     editor_key_super = f"super_editor_{signature_super}"
     
     if st.button("🚀 Jalankan Sintesis Laporan Lintas Tab (AI Engine)"):
@@ -595,11 +714,11 @@ INPUT DATA MODUL 1 (KONDISI EKSISTING MAKRO)
 =======================================================
 INPUT DATA MODUL 2 (RISIKO SENSITIVITAS & FISKAL)
 =======================================================
-- Skenario Guncangan: Skenario {scen_ext.upper()} pada Tahun {yr_ext}
-- Parameter Parameter Guncangan: Nilai Tukar Rp{nt_ext}/USD dan ICP ${oil_ext}/bbl
-- Dampak Terhadap PDB Sektor Eksternal: Pertumbuhan Ekonomi Terkoreksi menjadi {s_ext['gdp']:.2f}% (Delta vs Baseline: {s_ext['gdp']-b_ext['gdp']:.2f} pp)
-- Transaksi Berjalan (CA): {s_ext['ca']:.2f} Md USD
-- Defisit Fiskal APBN: {s_ext['defpdb']:.2f}% dari PDB
+- Skenario Guncangan: Skenario {st.session_state.scen_val.upper()} pada Tahun {st.session_state.year_val}
+- Parameter Parameter Guncangan: Nilai Tukar Rp{st.session_state.nt_val}/USD dan ICP ${st.session_state.oil_val}/bbl
+- Dampak Terhadap PDB Sektor Eksternal: Pertumbuhan Ekonomi Terkoreksi menjadi {s_ext_global['gdp']:.2f}% (Delta vs Baseline: {s_ext_global['gdp']-b_ext_global['gdp']:.2f} pp)
+- Transaksi Berjalan (CA): {s_ext_global['ca']:.2f} Md USD
+- Defisit Fiskal APBN: {s_ext_global['defpdb']:.2f}% dari PDB
 
 =======================================================
 STRUKTUR OUTPUT LAPORAN EKSEKUTIF (MANDATORI RESMI):
@@ -633,7 +752,6 @@ Berikan rekomendasi kebijakan konkret (BUKAN SLOGAN) dengan menyebutkan kementer
         with st.expander("🔍 Pratinjau Dokumen Cetak Bapak Menteri", expanded=True):
             st.markdown(st.session_state[editor_key_super])
             
-        # PROSES EXPORT PREMIUM KE PRESENTASI HTML / SAVE AS PDF
         try:
             import markdown
             html_export_content = markdown.markdown(st.session_state[editor_key_super])
@@ -671,7 +789,7 @@ Berikan rekomendasi kebijakan konkret (BUKAN SLOGAN) dengan menyebutkan kementer
             st.download_button(
                 label="📥 Unduh Executive Summary (Siap Cetak / Save as PDF)",
                 data=final_html_brief,
-                file_name=f"Laporan_Strategis_Bappenas_{yr_ext}.html",
+                file_name=f"Laporan_Strategis_Bappenas_{st.session_state.year_val}.html",
                 mime="text/html",
                 type="primary"
             )
