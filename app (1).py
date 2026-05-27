@@ -122,7 +122,7 @@ SCEN = {
     },
 }
 
-# --- Koefisien Elastisitas ---
+# --- Koefisien Elastisitas (Disesuaikan PDB Turun saat Depresiasi/ICP Naik) ---
 EL = {
     "bop_exp_nt":      0.15,   "bop_imp_nt":      -0.25,
     "bop_exp_oil":     0.80,   "bop_imp_oil":      0.95,
@@ -191,7 +191,7 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
         b["bulan_imp"] = b["reserves"] / base_imp_mo
         s["bulan_imp"] = s["reserves"] / sim_imp_mo
 
-    # -- GDP --
+    # -- GDP (Dinamis: Konsumsi & Investasi ikut terdampak) --
     dGexp_nt  = EL["gexp_nt"]  * dNT_pct
     dGimp_nt  = EL["gimp_nt"]  * dNT_pct
     dCons_nt  = EL["cons_nt"]  * dNT_pct
@@ -459,7 +459,7 @@ def run_full_dfm_replication():
 
 
 # ==========================================
-# 4. UI HEADER & MENU (DI ATAS)
+# 4. UI HEADER & SIDEBAR GLOBAL (SKEMA 2)
 # ==========================================
 st.markdown("""
 <style>
@@ -515,14 +515,106 @@ main_menu = st.radio(
     [
         "📊 Makro Nasional (DFM)", 
         "🌍 Sektor Eksternal & Fiskal", 
-        "📍 Ekonomi Daerah (WIP)", 
-        "🧠 AI Executive Brief (Synthesis)"
+        "📍 Ekonomi Daerah (WIP)"
     ],
     index=0,
     horizontal=True,
     label_visibility="collapsed"
 )
 st.divider()
+
+# -- SIDEBAR GLOBAL (Ada tombol AI + Setting Sektor Eksternal) --
+with st.sidebar:
+    st.markdown("### 🇮🇩 BI-BAPPENAS")
+    
+    st.markdown("#### 🧠 AI Executive Assistant")
+    st.caption("Sintesis data lintas sektor menjadi ringkasan eksekutif.")
+    if st.button("✨ Generate / Tampilkan AI Brief", use_container_width=True, type="primary"):
+        st.session_state.show_ai_brief = not st.session_state.get('show_ai_brief', False)
+    
+    st.divider()
+
+    # Default Nilai Tukar & Minyak (Untuk Global Scope)
+    nt_global = 16700
+    oil_global = 65
+    gdp_drop_global = 0.0
+    def_drop_global = 0.0
+
+    if main_menu == "🌍 Sektor Eksternal & Fiskal":
+        st.markdown("**BASELINE SKENARIO**")
+        scen = st.radio("Skenario", ["med", "high"], horizontal=True, format_func=lambda x: "Med" if x == "med" else "High")
+        st.markdown("**TAHUN PROYEKSI**")
+        yr = st.select_slider("Tahun", options=YEARS, value=2026)
+
+        D           = SCEN[scen]
+        nt_default  = D["nt"][yr]
+        icp_default = D["icp"][yr]
+
+        st.divider()
+        st.markdown("**PRESET SKENARIO CEPAT**")
+        preset = st.selectbox("Pilih preset", [
+            "-- pilih --",
+            "📊 Base Med",
+            "📈 Base High",
+            "📉 Depresiasi (NT 19.500)",
+            "🛢 Minyak Rendah ($40)",
+            "🔥 Minyak Tinggi ($100)",
+            "⚡ Twin Shock (NT 20.000, ICP $100)",
+        ])
+
+        if   "Depresiasi" in preset: nt_init, oil_init = 19_500,       icp_default
+        elif "Rendah"     in preset: nt_init, oil_init = nt_default,  40
+        elif "Tinggi"     in preset: nt_init, oil_init = nt_default,  100
+        elif "Twin"       in preset: nt_init, oil_init = 20_000,      100
+        else:                        nt_init, oil_init = nt_default,  icp_default
+
+        st.divider()
+
+        st.markdown("**NILAI TUKAR (Rp/USD)**")
+        nt = st.number_input(
+            "NT", min_value=10_000, max_value=30_000,
+            value=nt_init, step=50,
+            label_visibility="collapsed",
+        )
+        st.caption(f"Baseline {scen.upper()} {yr}: Rp{nt_default:,} — nilai naik = depresiasi Rupiah")
+
+        st.markdown("**HARGA MINYAK ICP (USD/bbl)**")
+        oil = st.number_input(
+            "ICP", min_value=20, max_value=150,
+            value=oil_init, step=1,
+            label_visibility="collapsed",
+        )
+        st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
+
+        b_sim, s_sim = simulate_eksternal(nt, oil, yr, scen)
+        
+        # Simpan state eksternal untuk AI
+        nt_global = nt
+        oil_global = oil
+        gdp_drop_global = s_sim["gdp"] - b_sim["gdp"]
+        def_drop_global = s_sim["defpdb"] - b_sim["defpdb"]
+        st.session_state['ext_nt'] = nt_global
+        st.session_state['ext_oil'] = oil_global
+        st.session_state['ext_gdp_drop'] = gdp_drop_global
+        st.session_state['ext_def'] = def_drop_global
+
+        st.divider()
+        st.markdown(f"**DELTA VS BASELINE {yr}**")
+        delta_rows = [
+            ("Neraca Berjalan", s_sim["ca"]       - b_sim["ca"],       " Miliar USD"),
+            ("Cadangan Devisa", s_sim["reserves"] - b_sim["reserves"], " Miliar USD"),
+            ("PDB Growth",      s_sim["gdp"]      - b_sim["gdp"],      " pp"),
+            ("Ekspor Riil",     s_sim["gexp"]     - b_sim["gexp"],     " pp"),
+            ("Defisit APBN",    s_sim["def"]      - b_sim["def"],      " T"),
+            ("Defisit/PDB",     s_sim["defpdb"]   - b_sim["defpdb"],   " pp"),
+        ]
+        for lbl, dv, sfx in delta_rows:
+            sign  = "+" if dv >= 0 else ""
+            color = delta_color(dv)
+            st.markdown(f"**{lbl}**: :{color}[{sign}{dv:.2f}{sfx}]")
+
+        st.caption(f"Skenario: {scen.upper()} | NT Rp{nt:,} | ICP ${oil}")
+
 
 # =========================================================================
 # MODUL 1: MAKRO NASIONAL (DFM)
@@ -755,6 +847,19 @@ if main_menu == "📊 Makro Nasional (DFM)":
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
         
+        if not df_full_results.empty:
+            import io
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df_full_results.to_excel(writer, index=False, sheet_name='Nowcast Results')
+            st.download_button(
+                label="📥 Download Full Nowcast Results (Excel)",
+                data=buffer.getvalue(),
+                file_name="Replikasi_Final_MATLAB_Elaborated.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
+
         st.markdown("### 📈 Monitoring Data Harian")
         selected_daily_view = st.radio("Pilih Mode Tampilan Pasar:", ["Data Berjalan", "Data Rata-Rata"], horizontal=True, key="daily_view_toggle")
         
@@ -995,67 +1100,16 @@ if main_menu == "📊 Makro Nasional (DFM)":
 # MODUL 2: SEKTOR EKSTERNAL & FISKAL
 # =========================================================================
 elif main_menu == "🌍 Sektor Eksternal & Fiskal":
-    
-    with st.sidebar:
-        st.markdown("### 🇮🇩 BI-BAPPENAS")
-        st.divider()
-        st.markdown("**BASELINE SKENARIO**")
-        scen = st.radio("Skenario", ["med", "high"], horizontal=True, format_func=lambda x: "Med" if x == "med" else "High")
-        st.markdown("**TAHUN PROYEKSI**")
-        yr = st.select_slider("Tahun", options=YEARS, value=2026)
-
-        D           = SCEN[scen]
-        nt_default  = D["nt"][yr]
-        icp_default = D["icp"][yr]
-
-        st.divider()
-        st.markdown("**PRESET SKENARIO CEPAT**")
-        preset = st.selectbox("Pilih preset", [
-            "-- pilih --", "📊 Base Med", "📈 Base High", "📉 Depresiasi (NT 19.500)",
-            "🛢 Minyak Rendah ($40)", "🔥 Minyak Tinggi ($100)", "⚡ Twin Shock (NT 20.000, ICP $100)",
-        ])
-
-        if   "Depresiasi" in preset: nt_init, oil_init = 19_500,       icp_default
-        elif "Rendah"     in preset: nt_init, oil_init = nt_default,  40
-        elif "Tinggi"     in preset: nt_init, oil_init = nt_default,  100
-        elif "Twin"       in preset: nt_init, oil_init = 20_000,      100
-        else:                        nt_init, oil_init = nt_default,  icp_default
-
-        st.divider()
-        st.markdown("**NILAI TUKAR (Rp/USD)**")
-        nt = st.number_input("NT", min_value=10_000, max_value=30_000, value=nt_init, step=50, label_visibility="collapsed")
-        st.caption(f"Baseline {scen.upper()} {yr}: Rp{nt_default:,} — nilai naik = depresiasi Rupiah")
-
-        st.markdown("**HARGA MINYAK ICP (USD/bbl)**")
-        oil = st.number_input("ICP", min_value=20, max_value=150, value=oil_init, step=1, label_visibility="collapsed")
-        st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
-
-        b_sim, s_sim = simulate_eksternal(nt, oil, yr, scen)
-        
-        # Simpan State Eksternal untuk AI
-        st.session_state['ext_nt'] = nt
-        st.session_state['ext_oil'] = oil
-        st.session_state['ext_gdp_drop'] = s_sim["gdp"] - b_sim["gdp"]
-        st.session_state['ext_def'] = s_sim["defpdb"] - b_sim["defpdb"]
-
-        st.divider()
-        st.markdown(f"**DELTA VS BASELINE {yr}**")
-        delta_rows = [
-            ("Neraca Berjalan", s_sim["ca"]       - b_sim["ca"],       " Miliar USD"),
-            ("Cadangan Devisa", s_sim["reserves"] - b_sim["reserves"], " Miliar USD"),
-            ("PDB Growth",      s_sim["gdp"]      - b_sim["gdp"],      " pp"),
-            ("Ekspor Riil",     s_sim["gexp"]     - b_sim["gexp"],     " pp"),
-            ("Defisit APBN",    s_sim["def"]      - b_sim["def"],      " T"),
-            ("Defisit/PDB",     s_sim["defpdb"]   - b_sim["defpdb"],   " pp"),
-        ]
-        for lbl, dv, sfx in delta_rows:
-            sign  = "+" if dv >= 0 else ""
-            color = delta_color(dv)
-            st.markdown(f"**{lbl}**: :{color}[{sign}{dv:.2f}{sfx}]")
-
-        st.caption(f"Skenario: {scen.upper()} | NT Rp{nt:,} | ICP ${oil}")
 
     st.markdown("### 🌍 Dashboard Sensitivitas Eksternal & Fiskal RI")
+    
+    # Ambil nilai simulasi dari global session state yang di set di sidebar
+    nt = st.session_state.get('ext_nt', 16700)
+    oil = st.session_state.get('ext_oil', 65)
+    
+    # Dapatkan ulang b_sim dan s_sim untuk tahun 2026 (atau tahun yang terpilih di sidebar jika disimpan di state, tapi kita pakai default yr untuk render table/chart)
+    # Karena kita butuh R untuk semua tahun, kita iterasi ulang
+    scen = "med" # Bisa dibuat dinamis jika disimpan di state
     
     keys = ["ca", "exp", "imp", "reserves", "gdp", "gexp", "gimp",
             "def", "rev", "bel", "sube", "bunga", "pajak"]
@@ -1063,6 +1117,9 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 
     for y in YEARS:
         bb, ss = simulate_eksternal(nt, oil, y, scen)
+        if y == 2026: # Simpan untuk KPI berjalan
+            b_sim, s_sim = bb, ss
+            
         for k, bval, sval, dec in [
             ("ca",       bb["ca"],       ss["ca"],       2),
             ("exp",      bb["exp"],      ss["exp"],      1),
@@ -1130,7 +1187,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             st.plotly_chart(fig, use_container_width=True)
         with c5:
             nt_range = list(range(12_000, 26_500, 500))
-            ca_sens  = [round(simulate_eksternal(n, oil, yr, scen)[1]["ca"], 2) for n in nt_range]
+            ca_sens  = [round(simulate_eksternal(n, oil, 2026, scen)[1]["ca"], 2) for n in nt_range]
             fig = go.Figure([go.Scatter(x=[n / 1000 for n in nt_range], y=ca_sens, mode="lines", name="CA (Miliar USD)", line=dict(color=C["blue"], width=2), fill="tozeroy", fillcolor="rgba(37,99,235,0.08)"), dot_trace("Posisi kini", [nt / 1000], [round(s_sim["ca"], 2)])])
             fig.update_layout(**fig_layout("Sensitivitas CA vs Nilai Tukar", xaxis_title="NT (ribu Rp)", yaxis_title="CA (Miliar USD)"))
             st.plotly_chart(fig, use_container_width=True)
@@ -1159,7 +1216,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             fig.update_layout(**fig_layout("Ekspor & Impor Riil B&J (%)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
         with c3:
-            gdp_sens  = [round(simulate_eksternal(n, oil, yr, scen)[1]["gdp"], 2) for n in nt_range]
+            gdp_sens  = [round(simulate_eksternal(n, oil, 2026, scen)[1]["gdp"], 2) for n in nt_range]
             fig = go.Figure([go.Scatter(x=[n / 1000 for n in nt_range], y=gdp_sens, mode="lines", name="PDB Growth (%)", line=dict(color=C["green"], width=2), fill="tozeroy", fillcolor="rgba(22,163,74,0.08)"), dot_trace("Posisi kini", [nt / 1000], [round(s_sim["gdp"], 2)])])
             fig.update_layout(**fig_layout("Sensitivitas PDB vs Nilai Tukar", xaxis_title="NT (ribu Rp)", yaxis_title="PDB Growth (%)"))
             st.plotly_chart(fig, use_container_width=True)
@@ -1266,7 +1323,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             st.plotly_chart(fig, use_container_width=True)
         with c3:
             icp_range = list(range(30, 135, 5))
-            def_sens  = [round(simulate_eksternal(nt, ic, yr, scen)[1]["def"], 0) for ic in icp_range]
+            def_sens  = [round(simulate_eksternal(nt, ic, 2026, scen)[1]["def"], 0) for ic in icp_range]
             fig = go.Figure([go.Scatter(x=[f"${ic}" for ic in icp_range], y=def_sens, mode="lines", name="Defisit (Rp T)", line=dict(color=C["purple"], width=2), fill="tozeroy", fillcolor="rgba(124,58,237,0.08)"), dot_trace("Posisi kini", [f"${oil}"], [round(s_sim["def"], 0)])])
             fig.update_layout(**fig_layout("Sensitivitas Defisit vs ICP", xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)"))
             st.plotly_chart(fig, use_container_width=True)
@@ -1356,15 +1413,10 @@ elif main_menu == "📍 Ekonomi Daerah (WIP)":
     st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")
 
 # =========================================================================
-# MODUL 4: AI EXECUTIVE BRIEF (SYNTHESIS K/L)
+# GLOBAL AI EXECUTIVE BRIEF (SKEMA 2)
 # =========================================================================
-elif main_menu == "🧠 AI Executive Brief (Synthesis)":
-    st.markdown("""
-    <style>
-    .glass-card { background: rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); padding: 24px; margin-bottom: 24px; }
-    </style>
-    """, unsafe_allow_html=True)
-    
+if st.session_state.get('show_ai_brief', False):
+    st.markdown("<br><hr style='border:2px solid #2563eb;'>", unsafe_allow_html=True)
     st.markdown("### 🧠 AI Policy Synthesis & Executive Brief")
     st.markdown("Modul ini mensintesis data dari seluruh *dashboard* untuk memproduksi rumusan kebijakan lintas sektoral (K/L) yang komprehensif.")
 
@@ -1374,9 +1426,14 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
     if 'ext_nt' not in st.session_state: missing_data.append("Sektor Eksternal")
 
     if missing_data:
-        st.warning(f"⚠️ **Data Belum Lengkap!** Silakan buka tab **{', '.join(missing_data)}** terlebih dahulu agar sistem AI dapat merekam data terbaru sebelum melakukan *generate*.")
+        st.warning(f"⚠️ **Data Belum Lengkap!** Silakan buka/klik tab **{', '.join(missing_data)}** minimal satu kali agar sistem AI dapat merekam data terbaru sebelum melakukan *generate*.")
     else:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("""
+        <style>
+        .glass-card-ai { background: rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); padding: 24px; margin-bottom: 24px; }
+        </style>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="glass-card-ai">', unsafe_allow_html=True)
         
         # Ekstrak data dari session state
         mac_view = st.session_state.get('mac_view', '2026')
@@ -1401,15 +1458,16 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
             st.success("✅ Draf Sintesis Lintas Sektor tersedia. Silakan tinjau dan edit di bawah.")
 
         if signature not in st.session_state.policy_cache:
-            if st.button("Generate Sintesis Kebijakan (AI Bappenas)"):
+            if st.button("Generate Sintesis Kebijakan (AI Bappenas)", type="primary"):
                 genai.configure(api_key=USER_API_KEY)
-                with st.spinner('AI sedang menganalisis kerentanan silang dan merumuskan arahan K/L...'):
+                with st.spinner('AI sedang menganalisis kerentanan silang dan merumuskan arahan K/L. Mohon tunggu, proses ini butuh waktu sekitar 15-30 detik...'):
                     try:
                         avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                         model_name = next((m for m in avail if 'flash' in m), avail[0] if avail else None)
 
                         if not model_name: st.error("Gagal mendeteksi model. Cek API Key.")
                         else:
+                            # Penyesuaian agar tidak timeout
                             generation_config = genai.types.GenerationConfig(
                                 temperature=0.7, 
                                 top_p=0.9,
@@ -1454,6 +1512,7 @@ Buatlah ringkasan eksekutif (Executive Brief) dengan struktur berikut:
 
 Catatan Khusus: Jangan gunakan kata-kata "Berdasarkan data di atas..." atau semacamnya. Langsung masuk ke gaya penulisan dokumen resmi pemerintahan.
 """
+                            # Penambahan waktu timeout 600 detik (10 menit)
                             res = model.generate_content(
                                 prompt, 
                                 generation_config=generation_config,
