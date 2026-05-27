@@ -41,16 +41,18 @@ def make_signature(view, avg, target, monthly_info, daily_info):
     import hashlib
     return hashlib.md5(raw_str.encode()).hexdigest()
 
-# ===============================================================================
-# 1. DATA BASELINE & KOEFISIEN (Sesuai Script Asli Sektor Eksternal)
-# ===============================================================================
+# ==========================================
+# 1. SETUP & DESIGN (MAKRO NASIONAL)
+# ==========================================
 st.set_page_config(page_title="Macro AI Command Center", layout="wide", page_icon="🇮🇩", initial_sidebar_state="expanded")
 
+# ===============================================================================
+# 2. DATA BASELINE SEKTOR EKSTERNAL (DARI REVISI)
+# ===============================================================================
 SCEN = {
     "med": {
         "nt":         {2026: 16700, 2027: 16500, 2028: 16300, 2029: 16200},
         "icp":        {2026: 65,    2027: 65,    2028: 65,    2029: 65},
-        # 3.1 BOP (Miliar USD)
         "ca":         {2026: -4.512,   2027: -19.096,  2028: 30.655,   2029: 3.750},
         "tradebal":   {2026: 47.226,   2027: 39.341,   2028: 47.772,   2029: 23.016},
         "exp":        {2026: 302.146,  2027: 343.369,  2028: 367.146,  2029: 381.850},
@@ -65,14 +67,12 @@ SCEN = {
         "bulan_imp":  {2026: 6.008,    2027: 5.160,    2028: 6.810,    2029: 6.333},
         "capdb":      {2026: -0.272,   2027: -1.059,   2028: 1.499,    2029: 0.163},
         "gdpnom_usd": {2026: 1659.5,   2027: 1803.9,   2028: 2044.6,   2029: 2299.6},
-        # 2.1 GDP Ekspor Riil (%)
         "gdp":        {2026: 5.4,    2027: 5.9,    2028: 7.7,    2029: 8.0},
         "cons":       {2026: 5.105,  2027: 8.254,  2028: 7.996,  2029: 8.008},
         "gov":        {2026: 7.854,  2027: 28.496, 2028: 7.099,  2029: 16.055},
         "inv":        {2026: 7.059,  2027: 9.841,  2028: 10.324, 2029: 11.149},
         "gexp":       {2026: 17.310, 2027: 5.132,  2028: -4.789, 2029: 1.538},
         "gimp":       {2026: 8.461,  2027: 13.907, 2028: -4.232, 2029: 7.928},
-        # 4.1 APBN (Rp Triliun)
         "rev":        {2026: 3223.6,  2027: 3332.2,  2028: 5015.6,  2029: 6286.5},
         "bel":        {2026: 3936.8,  2027: 3816.0,  2028: 5526.9,  2029: 6396.4},
         "def":        {2026: -713.1,  2027: -483.8,  2028: -511.3,  2029: -109.9},
@@ -149,10 +149,7 @@ C = {
     "gray":    "#6e7681",
 }
 
-# ===============================================================================
-# FUNGSI SIMULASI (Plek-ketiplek dari script Sektor Eksternal orisinal)
-# ===============================================================================
-def simulate(nt: float, oil: float, year: int, scen: str):
+def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
     D = SCEN[scen]
     b = {k: D[k].get(year, 0) for k in D}
 
@@ -162,7 +159,6 @@ def simulate(nt: float, oil: float, year: int, scen: str):
     dOil_pct = dOil * 100
     s = {}
 
-    # -- BOP ------------------------------------------------------------------
     exp_migas = b["exp"] * EL["share_exp_migas"]
     exp_non   = b["exp"] * (1 - EL["share_exp_migas"])
     imp_migas = b["imp"] * EL["share_imp_migas"]
@@ -191,7 +187,6 @@ def simulate(nt: float, oil: float, year: int, scen: str):
         b["bulan_imp"] = b["reserves"] / base_imp_mo
         s["bulan_imp"] = s["reserves"] / sim_imp_mo
 
-    # -- GDP ------------------------------------------------------------------
     dGexp_nt  = EL["gexp_nt"]  * dNT_pct
     dGimp_nt  = EL["gimp_nt"]  * dNT_pct
     dGexp_oil = EL["gexp_oil"] * dOil_pct
@@ -213,7 +208,6 @@ def simulate(nt: float, oil: float, year: int, scen: str):
         "netICP": EL["w_exp"] * dGexp_oil - EL["w_imp"] * dGimp_oil,
     }
 
-    # -- APBN -----------------------------------------------------------------
     dRevMigas = b["migas"] * EL["bop_exp_oil"] * dOil
     dPPH      = 55.6 * 0.7 * dOil
     dBea      = b["pajak"] * 0.019 * (dOil + dNT * 0.3)
@@ -247,9 +241,7 @@ def simulate(nt: float, oil: float, year: int, scen: str):
 
     return b, s
 
-# ===============================================================================
-# 3. HELPER CHART
-# ===============================================================================
+# --- Helper Chart Sektor Eksternal ---
 _BASE_LAYOUT = dict(
     paper_bgcolor="white",
     plot_bgcolor="#f8f9fa",
@@ -294,9 +286,9 @@ def metric_delta_color(val: float) -> str:
     return "off"
 
 
-# ===============================================================================
-# DATA LOADING (Modul 1 DFM)
-# ===============================================================================
+# ==========================================
+# 3. DATA LOADING & DFM ENGINE (MAKRO NASIONAL)
+# ==========================================
 @st.cache_data
 def load_data():
     try:
@@ -450,9 +442,9 @@ def run_full_dfm_replication():
         return pd.DataFrame()
 
 
-# ===============================================================================
-# 4. SISTEM NAVIGASI DASHBOARD (MENU DI ATAS)
-# ===============================================================================
+# ==========================================
+# 4. SISTEM NAVIGASI DASHBOARD (UBAH MENU KE ATAS)
+# ==========================================
 
 st.markdown("""
 <style>
@@ -481,7 +473,7 @@ st.markdown("""
     font-size: 13px; font-weight: 600; margin-bottom: 14px;
 }
 div[data-testid="metric-container"] > div { font-family: monospace; }
-/* Style radio button atas agar rapi seperti tab */
+/* TAMBAHAN UNTUK MENU ATAS */
 div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify-content: center; background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb;}
 </style>
 """, unsafe_allow_html=True)
@@ -497,7 +489,13 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# === MENU UTAMA (MAIN AREA) ===
+st.markdown(
+    '<div class="disclaimer">&#9888;&#65039; <strong>Disclaimer:</strong>'
+    ' Modul Sektor Eksternal dan Daerah masih dalam tahap pengembangan.</div>',
+    unsafe_allow_html=True,
+)
+
+# === MENU UTAMA PINDAH KE ATAS SINI ===
 main_menu = st.radio(
     "Pilih Modul Analisis:",
     ["📊 Makro Nasional (DFM)", "🌍 Sektor Eksternal & Fiskal", "📍 Ekonomi Daerah (WIP)"],
@@ -505,13 +503,60 @@ main_menu = st.radio(
     horizontal=True,
     label_visibility="collapsed"
 )
-
-st.markdown(
-    '<div class="disclaimer">&#9888;&#65039; <strong>Disclaimer:</strong>'
-    ' Modul Sektor Eksternal dan Daerah masih dalam tahap pengembangan.</div>',
-    unsafe_allow_html=True,
-)
 st.divider()
+
+# === SIDEBAR SEKARANG KHUSUS UNTUK SETTING MODUL SEKTOR EKSTERNAL ===
+if main_menu == "🌍 Sektor Eksternal & Fiskal":
+    with st.sidebar:
+        st.markdown("### ⚙️ PARAMETER SIMULASI")
+        st.markdown("**BASELINE SKENARIO**")
+        scen = st.radio("Skenario", ["med", "high"], horizontal=True, format_func=lambda x: "Med" if x == "med" else "High")
+        st.markdown("**TAHUN PROYEKSI**")
+        yr = st.select_slider("Tahun", options=YEARS, value=2026)
+
+        D           = SCEN[scen]
+        nt_default  = D["nt"][yr]
+        icp_default = D["icp"][yr]
+
+        st.divider()
+        st.markdown("**PRESET SKENARIO CEPAT**")
+        preset = st.selectbox("Pilih preset", [
+            "-- pilih --", "📊 Base Med", "📈 Base High", "📉 Depresiasi (NT 19.500)",
+            "🛢 Minyak Rendah ($40)", "🔥 Minyak Tinggi ($100)", "⚡ Twin Shock (NT 20.000, ICP $100)",
+        ])
+
+        if   "Depresiasi" in preset: nt_init, oil_init = 19_500,       icp_default
+        elif "Rendah"     in preset: nt_init, oil_init = nt_default,  40
+        elif "Tinggi"     in preset: nt_init, oil_init = nt_default,  100
+        elif "Twin"       in preset: nt_init, oil_init = 20_000,      100
+        else:                        nt_init, oil_init = nt_default,  icp_default
+
+        st.divider()
+        st.markdown("**NILAI TUKAR (Rp/USD)**")
+        nt = st.number_input("NT", min_value=10_000, max_value=30_000, value=nt_init, step=50, label_visibility="collapsed")
+        st.caption(f"Baseline {scen.upper()} {yr}: Rp{nt_default:,} — nilai naik = depresiasi Rupiah")
+
+        st.markdown("**HARGA MINYAK ICP (USD/bbl)**")
+        oil = st.number_input("ICP", min_value=20, max_value=150, value=oil_init, step=1, label_visibility="collapsed")
+        st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
+
+        b_sim, s_sim = simulate_eksternal(nt, oil, yr, scen)
+
+        st.divider()
+        st.markdown(f"**DELTA VS BASELINE {yr}**")
+        delta_rows = [
+            ("Neraca Berjalan", s_sim["ca"]       - b_sim["ca"],       " Miliar USD"),
+            ("Cadangan Devisa", s_sim["reserves"] - b_sim["reserves"], " Miliar USD"),
+            ("PDB Growth",      s_sim["gdp"]      - b_sim["gdp"],      " pp"),
+            ("Ekspor Riil",     s_sim["gexp"]     - b_sim["gexp"],     " pp"),
+            ("Defisit APBN",    s_sim["def"]      - b_sim["def"],      " T"),
+            ("Defisit/PDB",     s_sim["defpdb"]   - b_sim["defpdb"],   " pp"),
+        ]
+        for lbl, dv, sfx in delta_rows:
+            sign  = "+" if dv >= 0 else ""
+            color = delta_color(dv)
+            st.markdown(f"**{lbl}**: :{color}[{sign}{dv:.2f}{sfx}]")
+        st.caption(f"Skenario: {scen.upper()} | NT Rp{nt:,} | ICP ${oil}")
 
 
 # =========================================================================
@@ -1139,559 +1184,4 @@ Bagian Bawah: LAMPIRAN ANALISIS TEKNIS
                         .header h1 {{ font-size: 40px; font-weight: 800; margin: 0 0 10px 0; color: #ffffff; letter-spacing: -0.5px; line-height: 1.2; }}
                         .header p {{ font-size: 16px; color: #94a3b8; margin: 0; letter-spacing: 0.5px; }}
                         .content-body {{ padding: 40px 70px 60px 70px; }}
-                        .section-header {{ display: flex; align-items: center; justify-content: space-between; margin: 40px 0 20px 0; }}
-                        .section-label {{ font-size: 22px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 12px; margin: 0; }}
-                        .section-label span {{ background: #eff6ff; border: 1px solid #bfdbfe; padding: 8px 12px; border-radius: 10px; font-size: 18px; }}
-                        .tab-container {{ display: flex; gap: 10px; background: #f8fafc; padding: 6px; border-radius: 12px; border: 1px solid #e2e8f0; }}
-                        .tab-btn {{ background: transparent; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 700; font-family: inherit; color: #64748b; transition: 0.3s; font-size: 14px; }}
-                        .tab-btn:hover {{ background: #e2e8f0; color: #0f172a; }}
-                        .tab-btn.active {{ background: #3b82f6; color: white; box-shadow: 0 2px 4px rgba(59,130,246,0.3); }}
-                        .chart-wrapper {{ background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); margin-bottom: 50px; }}
-                        .data-list {{ list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }}
-                        .data-list li {{ background: #ffffff; padding: 14px 16px; border-radius: 10px; border: 1px solid #e2e8f0; font-size: 13.5px; color: #334155; display: flex; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); font-weight: 600; margin: 0; }}
-                        .bullet-blue {{ display: inline-block; width: 10px; height: 10px; background: #3b82f6; border-radius: 50%; flex-shrink: 0; margin-right: 10px; }}
-                        .badge-blue {{ background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 11px; flex-shrink: 0; }}
-                        .badge-red {{ background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 11px; flex-shrink: 0; }}
-                        .ai-box {{ background: linear-gradient(145deg, #f8fafc, #eff6ff); border: 1px solid #bfdbfe; border-radius: 20px; padding: 40px; margin-top: 60px; position: relative; }}
-                        .ai-box::before {{ content:''; position: absolute; top:0; left:0; width:100%; height:6px; background: linear-gradient(90deg, #2563eb, #9333ea); border-radius: 20px 20px 0 0; }}
-                        .policy-title {{ color: #1e3a8a; font-size: 20px; font-weight: 800; border-bottom: 2px dashed #cbd5e1; padding-bottom: 12px; margin-top: 35px; margin-bottom: 20px; }}
-                        .premium-list {{ list-style: none; padding: 0; margin: 0; }}
-                        .premium-list li {{ background: #ffffff; border: 1px solid #e2e8f0; border-left: 5px solid #3b82f6; padding: 25px 30px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); font-size: 15.5px; color: #1e293b; line-height: 1.8; }}
-                        .highlight-text {{ color: #2563eb; font-weight: 800; }}
-                        .footer {{ text-align: center; padding: 30px; margin-top: 50px; color: #94a3b8; font-size: 13px; border-top: 1px solid #e2e8f0; }}
-                    </style>
-                    <script>
-                        function openTabPH(evt, tabName) {{
-                            var i, tabcontent, tablinks;
-                            tabcontent = document.getElementsByClassName("tab-content-ph");
-                            for (i = 0; i < tabcontent.length; i++) {{ tabcontent[i].style.display = "none"; }}
-                            tablinks = document.getElementsByClassName("tab-btn-ph");
-                            for (i = 0; i < tablinks.length; i++) {{ tablinks[i].className = tablinks[i].className.replace(" active", ""); }}
-                            document.getElementById(tabName).style.display = "block";
-                            evt.currentTarget.className += " active";
-                        }}
-                    </script>
-                </head>
-                <body>
-                    <div class="report-container">
-                        <div class="header">
-                            <h1>Macroeconomic Brief</h1>
-                            <p>Analisis Perkembangan Ekonomi Makro Bappenas RI</p>
-                        </div>
-                        <div class="content-body">
-                            <div class="section-header"><div class="section-label"><span>📈</span> Proyeksi Pertumbuhan Ekonomi (DFM)</div></div>
-                            <div class="chart-wrapper">{chart_html}</div>
-                            <div class="section-header"><div class="section-label"><span>🏢</span> Kinerja Seluruh Sektor Riil</div></div>
-                            {html_monthly}
-                            <div class="section-header">
-                                <div class="section-label"><span>⚡</span> Volatilitas Pasar Harian</div>
-                                <div class="tab-container">
-                                    <button class="tab-btn tab-btn-ph active" onclick="openTabPH(event, 'ph-berjalan')">Data Berjalan</button>
-                                    <button class="tab-btn tab-btn-ph" onclick="openTabPH(event, 'ph-rata')">Rata-rata</button>
-                                </div>
-                            </div>
-                            <div id="ph-berjalan" class="tab-content-ph" style="display: block;">{html_daily_berjalan}</div>
-                            <div id="ph-rata" class="tab-content-ph" style="display: none;">{html_daily_rata}</div>
-                            <div class="ai-box">
-                                <div class="section-label" style="margin-top: 0; margin-bottom: 25px; border:none; padding:0;"><span>🧠</span> Rekomendasi Kebijakan</div>
-                                {html_policy}
-                            </div>
-                            <div class="footer">Dokumen ini dihasilkan oleh model AI.<br>Dicetak pada: <strong>{pd.Timestamp.now().strftime('%d %B %Y %H:%M')} WIB</strong></div>
-                        </div>
-                    </div>
-                </body>
-                </html>
-                """
-                st.download_button(label="📥 Download Laporan Eksekutif (.html)", data=html_template, file_name="Laporan_Brief_Bappenas.html", mime="text/html", type="primary")
-            except Exception as e:
-                st.warning(f"Gagal menyiapkan dokumen HTML. Error detail: {e}")
-
-# =========================================================================
-# MODUL 2: SEKTOR EKSTERNAL & FISKAL
-# =========================================================================
-elif main_menu == "🌍 Sektor Eksternal & Fiskal":
-    # -------------------------------------------------------------------------
-    # SIDEBAR KHUSUS MODUL 2
-    # -------------------------------------------------------------------------
-    with st.sidebar:
-        st.markdown("### 🇮🇩 BI-BAPPENAS")
-        st.divider()
-
-        st.markdown("**BASELINE SKENARIO**")
-        scen = st.radio(
-            "Skenario", ["med", "high"], horizontal=True,
-            format_func=lambda x: "Med" if x == "med" else "High",
-        )
-
-        st.markdown("**TAHUN PROYEKSI**")
-        yr = st.select_slider("Tahun", options=YEARS, value=2026)
-
-        D           = SCEN[scen]
-        nt_default  = D["nt"][yr]
-        icp_default = D["icp"][yr]
-
-        st.divider()
-        st.markdown("**PRESET SKENARIO CEPAT**")
-        preset = st.selectbox("Pilih preset", [
-            "-- pilih --",
-            "📊 Base Med",
-            "📈 Base High",
-            "📉 Depresiasi (NT 19.500)",
-            "🛢 Minyak Rendah ($40)",
-            "🔥 Minyak Tinggi ($100)",
-            "⚡ Twin Shock (NT 20.000, ICP $100)",
-        ])
-
-        if   "Depresiasi" in preset: nt_init, oil_init = 19_500,       icp_default
-        elif "Rendah"     in preset: nt_init, oil_init = nt_default,  40
-        elif "Tinggi"     in preset: nt_init, oil_init = nt_default,  100
-        elif "Twin"       in preset: nt_init, oil_init = 20_000,      100
-        else:                        nt_init, oil_init = nt_default,  icp_default
-
-        st.divider()
-
-        st.markdown("**NILAI TUKAR (Rp/USD)**")
-        nt = st.number_input(
-            "NT", min_value=10_000, max_value=30_000,
-            value=nt_init, step=50,
-            label_visibility="collapsed",
-        )
-        st.caption(f"Baseline {scen.upper()} {yr}: Rp{nt_default:,} — nilai naik = depresiasi Rupiah")
-
-        st.markdown("**HARGA MINYAK ICP (USD/bbl)**")
-        oil = st.number_input(
-            "ICP", min_value=20, max_value=150,
-            value=oil_init, step=1,
-            label_visibility="collapsed",
-        )
-        st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
-
-        # Simulasi tahun terpilih
-        b, s = simulate(nt, oil, yr, scen)
-
-        # Panel delta
-        st.divider()
-        st.markdown(f"**DELTA VS BASELINE {yr}**")
-        delta_rows = [
-            ("Neraca Berjalan", s["ca"]       - b["ca"],       " Miliar USD"),
-            ("Cadangan Devisa", s["reserves"] - b["reserves"], " Miliar USD"),
-            ("PDB Growth",      s["gdp"]      - b["gdp"],      " pp"),
-            ("Ekspor Riil",     s["gexp"]     - b["gexp"],     " pp"),
-            ("Defisit APBN",    s["def"]      - b["def"],      " T"),
-            ("Defisit/PDB",     s["defpdb"]   - b["defpdb"],   " pp"),
-        ]
-        for lbl, dv, sfx in delta_rows:
-            sign  = "+" if dv >= 0 else ""
-            color = delta_color(dv)
-            st.markdown(f"**{lbl}**: :{color}[{sign}{dv:.2f}{sfx}]")
-
-        st.caption(f"Skenario: {scen.upper()} | NT Rp{nt:,} | ICP ${oil}")
-
-    # -------------------------------------------------------------------------
-    # MAIN AREA MODUL 2
-    # -------------------------------------------------------------------------
-    st.markdown("### 🌍 Dashboard Sensitivitas Eksternal & Fiskal RI")
-    
-    # DATA SEMUA TAHUN (untuk grafik tren)
-    keys = ["ca", "exp", "imp", "res", "gdp", "gexp", "gimp",
-            "def", "rev", "bel", "sube", "bunga", "pajak"]
-    R = {k: {"b": [], "s": []} for k in keys}
-
-    for y in YEARS:
-        bb, ss = simulate(nt, oil, y, scen)
-        for k, bval, sval, dec in [
-            ("ca",    bb["ca"],       ss["ca"],       2),
-            ("exp",   bb["exp"],      ss["exp"],      1),
-            ("imp",   bb["imp"],      ss["imp"],      1),
-            ("res",   bb["reserves"], ss["reserves"], 1),
-            ("gdp",   bb["gdp"],      ss["gdp"],      2),
-            ("gexp",  bb["gexp"],     ss["gexp"],     2),
-            ("gimp",  bb["gimp"],     ss["gimp"],     2),
-            ("def",   bb["def"],      ss["def"],      0),
-            ("rev",   bb["rev"],      ss["rev"],      0),
-            ("bel",   bb["bel"],      ss["bel"],      0),
-            ("sube",  bb["sube"],     ss["sube"],     0),
-            ("bunga", bb["bunga"],    ss["bunga"],    0),
-            ("pajak", bb["pajak"],    ss["pajak"],    0),
-        ]:
-            R[k]["b"].append(round(bval, dec))
-            R[k]["s"].append(round(sval, dec))
-
-    YL = [str(y) for y in YEARS]
-
-    tab_bop, tab_gdp, tab_apbn, tab_table = st.tabs([
-        "📊 Neraca Pembayaran (BOP)",
-        "📈 Pertumbuhan Ekonomi (GDP)",
-        "🏛 Defisit APBN",
-        "📋 Tabel Lengkap",
-    ])
-
-    # --- TAB BOP ---
-    with tab_bop:
-        bop_kpis = [
-            ("🔵 Transaksi Berjalan",  f"{s['ca']:.2f}",       "Miliar USD", s["ca"]-b["ca"],             " Miliar USD"),
-            ("🟢 Ekspor Barang (fob)", f"{s['exp']:.1f}",      "Miliar USD", s["exp"]-b["exp"],             " Miliar USD"),
-            ("🔴 Impor Barang (fob)",  f"{s['imp']:.1f}",      "Miliar USD", s["imp"]-b["imp"],             " Miliar USD"),
-            ("🟠 Cadangan Devisa",     f"{s['reserves']:.1f}", "Miliar USD", s["reserves"]-b["reserves"],  " Miliar USD"),
-            ("🩵 Bulan Impor",         f"{s['bulan_imp']:.1f}","Bulan",      s["bulan_imp"]-b["bulan_imp"]," bln"),
-            ("🟡 CA / PDB",            f"{s['capdb']:.2f}%",   "%",          s["capdb"]-b["capdb"],        " pp"),
-        ]
-        cols = st.columns(6)
-        for col, (lbl, val, unit, dv, sfx) in zip(cols, bop_kpis):
-            with col:
-                st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}", delta_color=metric_delta_color(dv))
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            ca_bar_colors = [
-                "rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)"
-                for v in R["ca"]["s"]
-            ]
-            fig = go.Figure([
-                bar_trace("Baseline", YL, R["ca"]["b"], C["blue"], opacity=0.35),
-                go.Bar(name="Simulasi", x=YL, y=R["ca"]["s"], marker_color=ca_bar_colors, marker_line_width=0),
-            ])
-            fig.update_layout(**fig_layout("Transaksi Berjalan (Miliar USD)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
-        with c2:
-            fig = go.Figure([
-                bar_trace("Exp Baseline", YL, R["exp"]["b"], C["blue"], opacity=0.35),
-                bar_trace("Exp Simulasi", YL, R["exp"]["s"], C["teal"], opacity=0.85),
-                bar_trace("Imp Baseline", YL, R["imp"]["b"], C["red"],  opacity=0.25),
-                bar_trace("Imp Simulasi", YL, R["imp"]["s"], C["red2"], opacity=0.75),
-            ])
-            fig.update_layout(**fig_layout("Ekspor vs Impor Barang (Miliar USD)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
-        with c3:
-            fig = go.Figure([
-                line_base_trace("Baseline", YL, R["res"]["b"]),
-                line_trace("Simulasi", YL, R["res"]["s"], C["orange"], fill="tozeroy", fillcolor="rgba(234,88,12,0.08)"),
-            ])
-            fig.update_layout(**fig_layout("Cadangan Devisa (Miliar USD)"))
-            st.plotly_chart(fig, width="stretch")
-
-        c4, c5 = st.columns(2)
-
-        with c4:
-            tb_b   = [SCEN[scen]["tradebal"][y] for y in YEARS]
-            svc_b  = [SCEN[scen]["svcbal"][y]   for y in YEARS]
-            prim_b = [SCEN[scen]["primbal"][y]   for y in YEARS]
-            sec_b  = [SCEN[scen]["secbal"][y]    for y in YEARS]
-            fig = go.Figure([
-                bar_trace("N. Barang",      YL, tb_b,   C["blue"],   opacity=0.75),
-                bar_trace("N. Jasa",        YL, svc_b,  C["amber"],  opacity=0.75),
-                bar_trace("Pend. Primer",   YL, prim_b, C["red"],    opacity=0.75),
-                bar_trace("Pend. Sekunder", YL, sec_b,  C["green"],  opacity=0.75),
-            ])
-            fig.update_layout(**fig_layout("Komponen Neraca Berjalan (Miliar USD)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
-        with c5:
-            nt_range = list(range(12_000, 26_500, 500))
-            ca_sens  = [round(simulate(n, oil, yr, scen)[1]["ca"], 2) for n in nt_range]
-            fig = go.Figure([
-                go.Scatter(
-                    x=[n / 1000 for n in nt_range], y=ca_sens,
-                    mode="lines", name="CA (Miliar USD)",
-                    line=dict(color=C["blue"], width=2),
-                    fill="tozeroy", fillcolor="rgba(37,99,235,0.08)",
-                ),
-                dot_trace("Posisi kini", [nt / 1000], [round(s["ca"], 2)]),
-            ])
-            fig.update_layout(**fig_layout(
-                "Sensitivitas CA vs Nilai Tukar",
-                xaxis_title="NT (ribu Rp)", yaxis_title="CA (Miliar USD)",
-            ))
-            st.plotly_chart(fig, width="stretch")
-
-        st.info(
-            "📌 **Catatan:** Data BOP dari sheet 3.1 BOP. Med 2026: CA -$4,5 Miliar USD, Ekspor $302 Miliar USD, Caddev $161 Miliar USD. "
-            "Elastisitas ekspor non-migas: 0.15xNT; ekspor migas: 0.80xICP. "
-            "Impor non-migas: -0.25xNT; impor migas: 0.95xICP. "
-            "Caddev = baseline + Delta Total BOP."
-        )
-
-    # --- TAB GDP ---
-    with tab_gdp:
-        st.info(
-            "⚙️ **Mekanisme Transmisi:** Komponen yang terpengaruh langsung NT & ICP adalah "
-            "**Ekspor dan Impor Barang & Jasa**. Konsumsi RT, PMTB, Konsumsi Pemerintah bersifat *hardkey*. "
-            "Delta PDB sekitar 0,27 x Delta gexp dikurangi 0,22 x Delta gimp."
-        )
-
-        gdp_kpis = [
-            ("🟢 PDB Growth",     f"{s['gdp']:.2f}%",  s["gdp"]-b["gdp"],  " pp"),
-            ("🔵 Konsumsi RT",    f"{s['cons']:.2f}%", 0.0,                ""),
-            ("🩵 PMTB/Investasi", f"{s['inv']:.2f}%",  0.0,                ""),
-            ("🟢 Ekspor B&J",     f"{s['gexp']:.2f}%", s["gexp"]-b["gexp"]," pp"),
-            ("🔴 Impor B&J",      f"{s['gimp']:.2f}%", s["gimp"]-b["gimp"]," pp"),
-        ]
-        cols = st.columns(5)
-        for col, (lbl, val, dv, sfx) in zip(cols, gdp_kpis):
-            with col:
-                delta_str = f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}" if sfx else None
-                st.metric(lbl, val, delta_str, delta_color=metric_delta_color(dv))
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            fig = go.Figure([
-                line_base_trace("Baseline", YL, R["gdp"]["b"]),
-                line_trace("Simulasi", YL, R["gdp"]["s"], C["green"], fill="tozeroy", fillcolor="rgba(22,163,74,0.08)"),
-            ])
-            fig.update_layout(**fig_layout("Pertumbuhan PDB Riil (%)"))
-            st.plotly_chart(fig, width="stretch")
-
-        with c2:
-            fig = go.Figure([
-                bar_trace("Exp B&J Baseline", YL, R["gexp"]["b"], C["blue"], opacity=0.35),
-                bar_trace("Exp B&J Simulasi", YL, R["gexp"]["s"], C["teal"], opacity=0.85),
-                bar_trace("Imp B&J Baseline", YL, R["gimp"]["b"], C["red"],  opacity=0.25),
-                bar_trace("Imp B&J Simulasi", YL, R["gimp"]["s"], C["red2"], opacity=0.75),
-            ])
-            fig.update_layout(**fig_layout("Ekspor & Impor Riil B&J (%)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
-        with c3:
-            nt_range2 = list(range(12_000, 26_500, 500))
-            gdp_sens  = [round(simulate(n, oil, yr, scen)[1]["gdp"], 2) for n in nt_range2]
-            fig = go.Figure([
-                go.Scatter(
-                    x=[n / 1000 for n in nt_range2], y=gdp_sens,
-                    mode="lines", name="PDB Growth (%)",
-                    line=dict(color=C["green"], width=2),
-                    fill="tozeroy", fillcolor="rgba(22,163,74,0.08)",
-                ),
-                dot_trace("Posisi kini", [nt / 1000], [round(s["gdp"], 2)]),
-            ])
-            fig.update_layout(**fig_layout(
-                "Sensitivitas PDB vs Nilai Tukar",
-                xaxis_title="NT (ribu Rp)", yaxis_title="PDB Growth (%)",
-            ))
-            st.plotly_chart(fig, width="stretch")
-
-        tx = s["tx"]
-        col_nt, col_icp = st.columns(2)
-
-        with col_nt:
-            st.markdown("##### 🔵 Jalur Nilai Tukar (NT) → Net Ekspor → PDB")
-            st.dataframe(pd.DataFrame({
-                "Komponen":   ["Delta Ekspor Riil via NT", "Delta Impor Riil via NT", "Delta PDB via NT"],
-                "Nilai (pp)": [round(tx["expNT"], 3), round(tx["impNT"], 3), round(tx["netNT"], 3)],
-            }), hide_index=True, width="stretch")
-            st.caption("Elastisitas: gexp +0.08 pp per 1% depresiasi; gimp -0.06 pp per 1% depresiasi")
-
-        with col_icp:
-            st.markdown("##### 🟠 Jalur Harga Minyak (ICP) → Net Ekspor → PDB")
-            st.dataframe(pd.DataFrame({
-                "Komponen":   ["Delta Ekspor Riil via ICP", "Delta Impor Riil via ICP", "Delta PDB via ICP"],
-                "Nilai (pp)": [round(tx["expICP"], 3), round(tx["impICP"], 3), round(tx["netICP"], 3)],
-            }), hide_index=True, width="stretch")
-            st.caption("Dikalibrasi dari skenario Med ke High 2027: ICP $65 ke $75, gexp 5.1% ke 8.8%")
-
-    # --- TAB APBN ---
-    with tab_apbn:
-        st.warning(
-            "🏛 **Logika APBN:** Penerimaan migas (PPh Migas + PNBP SDA Migas) sensitif terhadap ICP. "
-            "Subsidi energi naik saat ICP naik dan NT melemah (biaya impor BBM meningkat). "
-            "Batas defisit 3% PDB per UU Keuangan Negara. "
-            "Skenario High 2027: ICP $75 menghasilkan defisit/PDB -2,2% vs Med -1,7%."
-        )
-
-        apbn_kpis = [
-            ("🔵 Pendapatan Negara", f"Rp {s['rev']:.0f} T",  s["rev"]-b["rev"],       " T"),
-            ("🔴 Belanja Negara",    f"Rp {s['bel']:.0f} T",  s["bel"]-b["bel"],       " T"),
-            ("🟣 Defisit/Surplus",   f"Rp {s['def']:.0f} T",  s["def"]-b["def"],       " T"),
-            ("🟡 Defisit/PDB",       f"{s['defpdb']:.2f}%",   s["defpdb"]-b["defpdb"], " pp"),
-            ("🟠 Subsidi Energi",    f"Rp {s['sube']:.0f} T", s["sube"]-b["sube"],     " T"),
-        ]
-        cols = st.columns(5)
-        for col, (lbl, val, dv, sfx) in zip(cols, apbn_kpis):
-            with col:
-                st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}", delta_color=metric_delta_color(dv))
-
-        st.markdown("##### 📊 Posisi Defisit APBN vs Batas 3% PDB")
-        limit = 3.0
-        col_b, col_s = st.columns(2)
-        with col_b:
-            alert_b = "🔴" if abs(b["defpdb"]) > limit else "🟢"
-            st.markdown(f"**Baseline {alert_b}:** `{b['defpdb']:.2f}% PDB`")
-            st.progress(min(abs(b["defpdb"]) / limit, 1.0))
-        with col_s:
-            alert_s = "🔴" if abs(s["defpdb"]) > limit else "🟢"
-            st.markdown(f"**Simulasi {alert_s}:** `{s['defpdb']:.2f}% PDB`")
-            st.progress(min(abs(s["defpdb"]) / limit, 1.0))
-        st.caption("Batas legal: -3.0% PDB (UU Keuangan Negara)")
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            def_colors = [
-                "rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)"
-                for v in R["def"]["s"]
-            ]
-            fig = go.Figure([
-                bar_trace("Baseline", YL, R["def"]["b"], C["purple"], opacity=0.35),
-                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0),
-            ])
-            fig.update_layout(**fig_layout("Defisit APBN (Rp T)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
-        with c2:
-            fig = go.Figure([
-                bar_trace("Pendapatan Baseline", YL, R["rev"]["b"], C["blue"], opacity=0.35),
-                bar_trace("Pendapatan Simulasi", YL, R["rev"]["s"], C["teal"], opacity=0.85),
-                bar_trace("Belanja Baseline",    YL, R["bel"]["b"], C["red"],  opacity=0.25),
-                bar_trace("Belanja Simulasi",    YL, R["bel"]["s"], C["red2"], opacity=0.75),
-            ])
-            fig.update_layout(**fig_layout("Pendapatan vs Belanja (Rp T)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
-        with c3:
-            icp_range = list(range(30, 135, 5))
-            def_sens  = [round(simulate(nt, ic, yr, scen)[1]["def"], 0) for ic in icp_range]
-            fig = go.Figure([
-                go.Scatter(
-                    x=[f"${ic}" for ic in icp_range], y=def_sens,
-                    mode="lines", name="Defisit (Rp T)",
-                    line=dict(color=C["purple"], width=2),
-                    fill="tozeroy", fillcolor="rgba(124,58,237,0.08)",
-                ),
-                dot_trace("Posisi kini", [f"${oil}"], [round(s["def"], 0)]),
-            ])
-            fig.update_layout(**fig_layout(
-                "Sensitivitas Defisit vs ICP",
-                xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)",
-            ))
-            st.plotly_chart(fig, width="stretch")
-
-        c4, c5 = st.columns(2)
-
-        with c4:
-            fig = go.Figure([
-                bar_trace("Subsidi Energi Baseline", YL, R["sube"]["b"],  C["red"],     opacity=0.35),
-                bar_trace("Subsidi Energi Simulasi", YL, R["sube"]["s"],  C["red2"],    opacity=0.85),
-                bar_trace("Bunga Utang Baseline",    YL, R["bunga"]["b"], C["orange"],  opacity=0.35),
-                bar_trace("Bunga Utang Simulasi",    YL, R["bunga"]["s"], C["orange2"], opacity=0.85),
-            ])
-            fig.update_layout(**fig_layout("Komponen Belanja Utama (Rp T)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
-        with c5:
-            fig = go.Figure([
-                bar_trace("Pajak Baseline", YL, R["pajak"]["b"], C["blue"], opacity=0.35),
-                bar_trace("Pajak Simulasi", YL, R["pajak"]["s"], C["teal"], opacity=0.85),
-            ])
-            fig.update_layout(**fig_layout("Komponen Penerimaan Pajak (Rp T)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
-        ax = s["ax"]
-        col_rev, col_bel = st.columns(2)
-
-        with col_rev:
-            st.markdown("##### 🔵 Dampak ke Sisi Pendapatan")
-            st.dataframe(pd.DataFrame({
-                "Komponen": [
-                    "PPh Migas (ICP sensitif)",
-                    "PNBP SDA Migas (ICP sensitif)",
-                    "Bea Keluar (NT + komoditas)",
-                    "Delta Total Pendapatan",
-                ],
-                "Delta (Rp T)": [
-                    round(ax["pph"],   2),
-                    round(ax["sda"],   2),
-                    round(ax["bea"],   2),
-                    round(ax["rev"],   2),
-                ],
-            }), hide_index=True, width="stretch")
-
-        with col_bel:
-            st.markdown("##### 🔴 Tekanan Sisi Belanja")
-            st.dataframe(pd.DataFrame({
-                "Komponen": [
-                    "Subsidi Energi (ICP naik + NT melemah)",
-                    "Bunga Utang Valas (NT melemah)",
-                    "Delta Total Belanja",
-                ],
-                "Delta (Rp T)": [
-                    round(ax["sube"],  2),
-                    round(ax["bunga"], 2),
-                    round(ax["bel"],   2),
-                ],
-            }), hide_index=True, width="stretch")
-
-    # --- TAB TABEL LENGKAP ---
-    with tab_table:
-        st.markdown("#### Tabel Lengkap BOP, GDP & APBN — Baseline vs Simulasi")
-
-        table_def = [
-            ("I. Transaksi Berjalan",          "ca",        "ca",        2,   "Miliar USD"),
-            ("  Neraca Barang",                "tradebal",  "tradebal",  2,   "Miliar USD"),
-            ("    Ekspor (fob)",               "exp",       "exp",       1,   "Miliar USD"),
-            ("    Impor (fob)",                "imp",       "imp",       1,   "Miliar USD"),
-            ("  Neraca Jasa",                  "svcbal",    "svcbal",    2,   "Miliar USD"),
-            ("  Pendapatan Primer",            "primbal",   "primbal",   2,   "Miliar USD"),
-            ("  Pendapatan Sekunder",          "secbal",    "secbal",    2,   "Miliar USD"),
-            ("III. Transaksi Finansial",       "finbal",    "finbal",    2,   "Miliar USD"),
-            ("IV. Total BOP",                  "total",     "total",     2,   "Miliar USD"),
-            ("Cadangan Devisa",                "reserves",  "reserves",  1,   "Miliar USD"),
-            ("  Dalam Bulan Impor",            "bulan_imp", "bulan_imp", 1,   "Bulan"),
-            ("CA / PDB (%)",                   "capdb",     "capdb",     2,   "%"),
-            ("★ PDB Growth (Riil)",             "gdp",       "gdp",       2,   "%"),
-            ("  Konsumsi RT (hardkey)",        "cons",      "cons",      2,   "%"),
-            ("  PMTB/Investasi (hardkey)",     "inv",       "inv",       2,   "%"),
-            ("  Ekspor B&J (aktif)",           "gexp",      "gexp",      2,   "%"),
-            ("  Impor B&J (aktif)",            "gimp",      "gimp",      2,   "%"),
-            ("★ Pendapatan Negara",             "rev",       "rev",       0,   "Rp T"),
-            ("  Perpajakan",                   "pajak",     "pajak",     0,   "Rp T"),
-            ("  PNBP",                         "pnbp",      "pnbp",      0,   "Rp T"),
-            ("★ Belanja Negara",                "bel",       "bel",       0,   "Rp T"),
-            ("  Subsidi Energi",               "sube",      "sube",      0,   "Rp T"),
-            ("  Bunga Utang",                  "bunga",     "bunga",     0,   "Rp T"),
-            ("★ Defisit APBN",                  "def",       "def",       0,   "Rp T"),
-            ("  Defisit / PDB",                "defpdb",    "defpdb",    2,   "%"),
-            ("  PDB Nominal",                  "pdb",       "pdb",       0,   "Rp T"),
-        ]
-
-        rows_tbl = []
-        for lbl, bk, sk, dec, unit in table_def:
-            bv   = b.get(bk) or 0
-            sv   = s.get(sk) or 0
-            diff = sv - bv
-            pct  = (diff / abs(bv) * 100) if bv != 0 else 0
-            sign = "+" if diff >= 0 else ""
-            rows_tbl.append({
-                "Indikator": lbl,
-                "Baseline":  round(bv,   dec),
-                "Simulasi":  round(sv,   dec),
-                "Delta Abs": f"{sign}{round(diff, dec)}",
-                "Delta %":   f"{sign}{pct:.1f}%",
-                "Satuan":    unit,
-            })
-
-        st.dataframe(
-            pd.DataFrame(rows_tbl),
-            hide_index=True,
-            width="stretch",
-            height=720,
-        )
-
-        st.caption(
-            "Baseline = skenario Med/High dari Excel (sheet 3.1 BOP, 2.1 GDP Exp Riil, 4.1 APBN). "
-            "Simulasi = baseline + efek elastisitas parsial dari deviasi NT & ICP.\n"
-            "GDP: komponen aktif berubah hanya Ekspor & Impor B&J, komponen lain hardkey.\n"
-            "APBN: penerimaan migas & PNBP SDA sensitif ICP; subsidi energi naik saat ICP naik dan NT melemah. "
-            "Defisit maks -3% PDB (UU).\n"
-            "BOP: Miliar USD | GDP: % | APBN: Rp Triliun."
-        )
-
-
-# =========================================================================
-# MODUL 3: EKONOMI DAERAH (WIP)
-# =========================================================================
-elif main_menu == "📍 Ekonomi Daerah (WIP)":
-    st.markdown("### 📍 Command Center: Ekonomi Kewilayahan")
-    st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")
+                        .section-header {{ display: flex; align-items:
