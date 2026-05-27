@@ -122,7 +122,7 @@ SCEN = {
     },
 }
 
-# --- Koefisien Elastisitas (Disesuaikan PDB Turun saat Depresiasi/ICP Naik) ---
+# --- Koefisien Elastisitas ---
 EL = {
     "bop_exp_nt":      0.15,   "bop_imp_nt":      -0.25,
     "bop_exp_oil":     0.80,   "bop_imp_oil":      0.95,
@@ -191,7 +191,7 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
         b["bulan_imp"] = b["reserves"] / base_imp_mo
         s["bulan_imp"] = s["reserves"] / sim_imp_mo
 
-    # -- GDP (Dinamis: Konsumsi & Investasi ikut terdampak) --
+    # -- GDP --
     dGexp_nt  = EL["gexp_nt"]  * dNT_pct
     dGimp_nt  = EL["gimp_nt"]  * dNT_pct
     dCons_nt  = EL["cons_nt"]  * dNT_pct
@@ -510,7 +510,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# === MENU UTAMA KE-4 UNTUK AI (SKEMA 1) ===
 main_menu = st.radio(
     "Pilih Modul Analisis:",
     [
@@ -650,7 +649,6 @@ if main_menu == "📊 Makro Nasional (DFM)":
         if selected_view == "2026": title_text += " (Model: Dynamic Factor MQ)"
         else: title_text = "Historis & Proyeksi Ekonomi (DFM Model)"
         
-        # Simpan State Makro untuk AI
         st.session_state['mac_avg'] = current_avg
         st.session_state['mac_target'] = current_target
         st.session_state['mac_view'] = selected_view
@@ -1413,11 +1411,11 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                         if not model_name: st.error("Gagal mendeteksi model. Cek API Key.")
                         else:
                             generation_config = genai.types.GenerationConfig(
-    temperature=0.7, 
-    top_p=0.9,
-    max_output_tokens=2048
-)
-model = genai.GenerativeModel(model_name)
+                                temperature=0.7, 
+                                top_p=0.9,
+                                max_output_tokens=2048
+                            )
+                            model = genai.GenerativeModel(model_name)
                             
                             prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Bappenas RI. 
@@ -1456,11 +1454,11 @@ Buatlah ringkasan eksekutif (Executive Brief) dengan struktur berikut:
 
 Catatan Khusus: Jangan gunakan kata-kata "Berdasarkan data di atas..." atau semacamnya. Langsung masuk ke gaya penulisan dokumen resmi pemerintahan.
 """
-                           res = model.generate_content(
-    prompt, 
-    generation_config=generation_config,
-    request_options={"timeout": 600}
-)
+                            res = model.generate_content(
+                                prompt, 
+                                generation_config=generation_config,
+                                request_options={"timeout": 600}
+                            )
                             st.session_state.policy_cache[signature] = res.text
                             with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
                             st.session_state[editor_key] = res.text
