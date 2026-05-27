@@ -1412,8 +1412,12 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
 
                         if not model_name: st.error("Gagal mendeteksi model. Cek API Key.")
                         else:
-                            generation_config = genai.types.GenerationConfig(temperature=0.7, top_p=0.9)
-                            model = genai.GenerativeModel(model_name)
+                            generation_config = genai.types.GenerationConfig(
+    temperature=0.7, 
+    top_p=0.9,
+    max_output_tokens=2048
+)
+model = genai.GenerativeModel(model_name)
                             
                             prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Bappenas RI. 
@@ -1452,7 +1456,11 @@ Buatlah ringkasan eksekutif (Executive Brief) dengan struktur berikut:
 
 Catatan Khusus: Jangan gunakan kata-kata "Berdasarkan data di atas..." atau semacamnya. Langsung masuk ke gaya penulisan dokumen resmi pemerintahan.
 """
-                            res = model.generate_content(prompt, generation_config=generation_config)
+                           res = model.generate_content(
+    prompt, 
+    generation_config=generation_config,
+    request_options={"timeout": 600}
+)
                             st.session_state.policy_cache[signature] = res.text
                             with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
                             st.session_state[editor_key] = res.text
