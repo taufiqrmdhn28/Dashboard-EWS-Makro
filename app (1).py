@@ -35,14 +35,19 @@ if 'policy_cache' not in st.session_state:
     else:
         st.session_state.policy_cache = {}
 
-def make_signature(view, avg, target, monthly_info, daily_info):
-    raw_str = f"{view}_{avg:.2f}_{target}_{monthly_info}_{daily_info}"
+def make_signature(view, avg, target, monthly_info, daily_info, ext_nt, ext_oil):
+    raw_str = f"{view}_{avg:.2f}_{target}_{monthly_info}_{daily_info}_{ext_nt}_{ext_oil}"
     return hashlib.md5(raw_str.encode()).hexdigest()
 
 # ==========================================
-# 1. SETUP & DESIGN (GLOBAL)
+# 1. GLOBAL SETUP & VARIABEL SEKTOR EKSTERNAL
 # ==========================================
-st.set_page_config(page_title="Macro AI Command Center", layout="wide", page_icon="🇮🇩", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="Macro AI Command Center", 
+    layout="wide", 
+    page_icon="🇮🇩", 
+    initial_sidebar_state="expanded"
+)
 
 SCEN = {
     "med": {
@@ -117,14 +122,14 @@ SCEN = {
     },
 }
 
-# --- Koefisien Elastisitas (Hasil Reverse Engineering dari Screenshot) ---
+# --- Koefisien Elastisitas (Disesuaikan PDB Turun saat Depresiasi/ICP Naik) ---
 EL = {
     "bop_exp_nt":      0.15,   "bop_imp_nt":      -0.25,
     "bop_exp_oil":     0.80,   "bop_imp_oil":      0.95,
     "bop_svc_nt":      0.05,   "bop_prim_nt":     -0.03,
     "share_exp_migas": 0.06,   "share_imp_migas":  0.16,
     
-    # Transmisi GDP (Diselaraskan agar PDB Turun saat Rupiah jeblok / ICP naik)
+    # Transmisi GDP
     "gexp_nt":         0.15,   "gimp_nt":         -0.10, 
     "cons_nt":        -0.10,   "inv_nt":          -0.06, 
     "gexp_oil":        0.025,  "gimp_oil":         0.018,
@@ -186,7 +191,7 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
         b["bulan_imp"] = b["reserves"] / base_imp_mo
         s["bulan_imp"] = s["reserves"] / sim_imp_mo
 
-    # -- GDP --
+    # -- GDP (Dinamis: Konsumsi & Investasi ikut terdampak) --
     dGexp_nt  = EL["gexp_nt"]  * dNT_pct
     dGimp_nt  = EL["gimp_nt"]  * dNT_pct
     dCons_nt  = EL["cons_nt"]  * dNT_pct
@@ -256,29 +261,52 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
 
     return b, s
 
-# --- Helper Chart ---
+# --- Helper Chart Sektor Eksternal ---
 _BASE_LAYOUT = dict(
-    paper_bgcolor="white", plot_bgcolor="#f8f9fa",
+    paper_bgcolor="white",
+    plot_bgcolor="#f8f9fa",
     font=dict(family="monospace", size=11, color="#4b5563"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font_size=10),
-    margin=dict(l=40, r=20, t=50, b=40), height=270,
-    xaxis=dict(gridcolor="#e5e7eb", showgrid=True), yaxis=dict(gridcolor="#e5e7eb", showgrid=True),
+    legend=dict(
+        orientation="h", yanchor="bottom", y=1.02,
+        xanchor="right", x=1, font_size=10,
+    ),
+    margin=dict(l=40, r=20, t=50, b=40),
+    height=270,
+    xaxis=dict(gridcolor="#e5e7eb", showgrid=True),
+    yaxis=dict(gridcolor="#e5e7eb", showgrid=True),
 )
 
 def fig_layout(title: str, barmode: str = None, **kwargs) -> dict:
     layout = {**_BASE_LAYOUT, "title": dict(text=title, font=dict(size=13)), **kwargs}
-    if barmode: layout["barmode"] = barmode
+    if barmode:
+        layout["barmode"] = barmode
     return layout
 
-def bar_trace(name, x, y, color, opacity=0.75): return go.Bar(name=name, x=x, y=y, marker_color=color, marker_line_width=0, opacity=opacity)
-def line_trace(name, x, y, color, fill=None, fillcolor=None, width=2, size=6): return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=color, width=width), marker=dict(size=size, color=color), fill=fill, fillcolor=fillcolor)
-def line_base_trace(name, x, y): return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=C["gray"], dash="dash", width=1.5), marker=dict(size=4, color=C["gray"]))
-def dot_trace(name, x, y): return go.Scatter(name=name, x=x, y=y, mode="markers", marker=dict(size=11, color=C["amber"], line=dict(color="white", width=2)))
-def delta_color(val: float) -> str: return "green" if val > 0.005 else "red" if val < -0.005 else "gray"
-def metric_delta_color(val: float) -> str: return "normal" if delta_color(val) == "green" else "inverse" if delta_color(val) == "red" else "off"
+def bar_trace(name, x, y, color, opacity=0.75):
+    return go.Bar(name=name, x=x, y=y, marker_color=color, marker_line_width=0, opacity=opacity)
+
+def line_trace(name, x, y, color, fill=None, fillcolor=None, width=2, size=6):
+    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=color, width=width), marker=dict(size=size, color=color), fill=fill, fillcolor=fillcolor)
+
+def line_base_trace(name, x, y):
+    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=C["gray"], dash="dash", width=1.5), marker=dict(size=4, color=C["gray"]))
+
+def dot_trace(name, x, y):
+    return go.Scatter(name=name, x=x, y=y, mode="markers", marker=dict(size=11, color=C["amber"], line=dict(color="white", width=2)))
+
+def delta_color(val: float) -> str:
+    if val > 0.005:   return "green"
+    if val < -0.005:  return "red"
+    return "gray"
+
+def metric_delta_color(val: float) -> str:
+    dc = delta_color(val)
+    if dc == "green": return "normal"
+    if dc == "red":   return "inverse"
+    return "off"
 
 # ==========================================
-# 3. DATA LOADING & DFM ENGINE
+# 2. DATA LOADING & DFM ENGINE (MAKRO NASIONAL)
 # ==========================================
 @st.cache_data
 def load_data():
@@ -482,9 +510,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# === MENU UTAMA KE-4 UNTUK AI (SKEMA 1) ===
 main_menu = st.radio(
     "Pilih Modul Analisis:",
-    ["📊 Makro Nasional (DFM)", "🌍 Sektor Eksternal & Fiskal", "📍 Ekonomi Daerah (WIP)"],
+    [
+        "📊 Makro Nasional (DFM)", 
+        "🌍 Sektor Eksternal & Fiskal", 
+        "📍 Ekonomi Daerah (WIP)", 
+        "🧠 AI Executive Brief (Synthesis)"
+    ],
     index=0,
     horizontal=True,
     label_visibility="collapsed"
@@ -615,6 +649,11 @@ if main_menu == "📊 Makro Nasional (DFM)":
         title_text = f"Outlook Ekonomi: {selected_view}"
         if selected_view == "2026": title_text += " (Model: Dynamic Factor MQ)"
         else: title_text = "Historis & Proyeksi Ekonomi (DFM Model)"
+        
+        # Simpan State Makro untuk AI
+        st.session_state['mac_avg'] = current_avg
+        st.session_state['mac_target'] = current_target
+        st.session_state['mac_view'] = selected_view
 
         with header_ui:
             st.markdown(f"### {title_text}")
@@ -718,19 +757,6 @@ if main_menu == "📊 Makro Nasional (DFM)":
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
         
-        if not df_full_results.empty:
-            import io
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df_full_results.to_excel(writer, index=False, sheet_name='Nowcast Results')
-            st.download_button(
-                label="📥 Download Full Nowcast Results (Excel)",
-                data=buffer.getvalue(),
-                file_name="Replikasi_Final_MATLAB_Elaborated.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
-
         st.markdown("### 📈 Monitoring Data Harian")
         selected_daily_view = st.radio("Pilih Mode Tampilan Pasar:", ["Data Berjalan", "Data Rata-Rata"], horizontal=True, key="daily_view_toggle")
         
@@ -803,9 +829,8 @@ if main_menu == "📊 Makro Nasional (DFM)":
                 idx += 1
                 
             if daily_summary_list: daily_summary_str = " | ".join(daily_summary_list)
-            if daily_berjalan_list: daily_berjalan_str = " | ".join(daily_berjalan_list)
-            if daily_rata_list: daily_rata_str = " | ".join(daily_rata_list)
-                
+            
+        st.session_state['mac_daily'] = daily_summary_str
         st.markdown("<br>", unsafe_allow_html=True)
 
         ATURAN_WARNA = {
@@ -885,6 +910,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
             with cols[i%4]: st.markdown(html, unsafe_allow_html=True)
             
         if monthly_summary_list: monthly_summary_str = "\n".join(monthly_summary_list)
+        st.session_state['mac_monthly'] = monthly_summary_str
 
         st.markdown("### 🗺️ Heatmap Tracker (Tren YoY & Threshold Target)")
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
@@ -944,6 +970,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
                 z_data.append(col_z); text_data.append(col_text)
                 
             if heatmap_summary_list: heatmap_summary_str = " | ".join(heatmap_summary_list)
+            st.session_state['mac_heat'] = heatmap_summary_str
                 
             fig_hm = go.Figure(data=go.Heatmap(
                 z=z_data, x=x_labels, y=indicator_cols, text=text_data, texttemplate="<b>%{text}</b>", 
@@ -965,243 +992,17 @@ if main_menu == "📊 Makro Nasional (DFM)":
             """, unsafe_allow_html=True)
         else: st.info("Belum ada data bulanan untuk ditampilkan.")
         st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown("### 🧠 AI Policy Generator")
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-
-        signature = make_signature(selected_view, current_avg, current_target, monthly_summary_str, daily_summary_str)
-        editor_key = f"editor_{signature}"
-        final_policy_text = ""
-
-        if signature in st.session_state.policy_cache:
-            if editor_key not in st.session_state:
-                st.session_state[editor_key] = st.session_state.policy_cache[signature]
-            st.success("✅ Draf tersedia. Silakan lakukan penyesuaian narasi pada kotak di bawah.")
-
-        if signature not in st.session_state.policy_cache:
-            if st.button("Generate Kebijakan Strategis (AI)"):
-                genai.configure(api_key=USER_API_KEY)
-                with st.spinner('AI sedang menganalisis fenomena spesifik dan merancang terobosan kebijakan...'):
-                    try:
-                        avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                        model_name = next((m for m in avail if 'flash' in m), avail[0] if avail else None)
-
-                        if not model_name: st.error("Gagal mendeteksi model. Cek API Key.")
-                        else:
-                            generation_config = genai.types.GenerationConfig(temperature=0.7, top_p=0.9)
-                            model = genai.GenerativeModel(model_name)
-                            
-                            prompt = f"""
-Anda adalah Perencana Pembangunan Nasional Ahli Utama di Bappenas RI. 
-Tugas Anda adalah menyusun Catatan Strategis (Executive Summary) mengenai prospek ekonomi makro dan arahan kebijakan spesifik ke depan.
-
-=====================
-KONDISI PDB, PERTUMBUHAN & SEKTOR RIIL
-=====================
-Fokus Indikator: {selected_view}
-Target APBN: {current_target}% | Rata-rata Proyeksi DFM: {current_avg:.2f}%
-Ringkasan Bulanan (Sektor Riil): {monthly_summary_str}
-Status Momentum: {heatmap_summary_str}
-Volatilitas Harian: {daily_summary_str}
-
-=====================
-TUGAS KHUSUS (WAJIB DIBACA SEBELUM MENULIS):
-=====================
-1. FOKUS PADA ANOMALI DATA TERBARU: Jangan berikan ringkasan umum. Cari indikator dari data di atas yang pergerakannya paling ekstrem/mengkhawatirkan, lalu jadikan itu sebagai FOKUS UTAMA perumusan masalah.
-2. IDENTIFIKASI ROOT CAUSE BERBASIS BERITA NYATA: Kaitkan anomali data tersebut dengan pemicu faktual nyata di dunia saat ini (Misal: konflik Timur Tengah terbaru, *supply chain shock* komoditas tertentu, rilis suku bunga The Fed terbaru, atau kebijakan fiskal domestik terkini). 
-3. ANTI-KLISE (DILARANG MENGGUNAKAN TEMPLATE): Saya MELARANG KERAS Anda menggunakan judul kebijakan yang terlalu umum seperti "Hilirisasi", "Transformasi Digital", atau "Ekonomi Hijau" KECUALI jika data di atas secara langsung dan eksplisit menunjukkan masalah di sektor tersebut. Buatlah penamaan kebijakan yang spesifik sesuai pemicu masalahnya.
-
-=====================
-STRUKTUR OUTPUT DOKUMEN:
-=====================
-Bagian Utama: ARAH KEBIJAKAN DAN STRATEGI MITIGASI (FOKUS PROBLEM-SOLVING)
-Sajikan 5 Rekomendasi Kebijakan (2 Stabilisasi Pendek, 2 Solusi Struktural, 1 Inovatif Ekstrem) yang didesain HANYA untuk merespons pemicu spesifik (root cause) dari angka-angka di atas.
-
-Format untuk masing-masing kebijakan:
-- Arah Kebijakan: (Judul kebijakan harus spesifik, tajam, dan bukan slogan klise).
-- Taktik Mitigasi: (Penjelasan teknokratis BAGAIMANA cara meredam root cause tersebut secara langsung agar *capital outflow*, inflasi, atau pelemahan daya beli segera berhenti).
-- Referensi Dasar: [Nomor]. Dasar/Rilis Lembaga Resmi (Contoh: IMF/The Fed/World Bank/BI) terkait *root cause* tersebut.
-
----
-Bagian Bawah: LAMPIRAN ANALISIS TEKNIS 
-(Berikan 2 analisis teknis mendalam)
-- 1. Diagnosa Fenomena Utama: (Jelaskan peristiwa global/domestik nyata apa yang sedang "mengendalikan" angka-angka di atas).
-- 2. Titik Lemah Transmisi Sektor Riil: (Jelaskan dari mana dampak krisis akan merambat, misal: "Lonjakan Dolar merambat ke biaya impor bahan baku industri, berujung pada ancaman PHK sektor padat karya").
-"""
-                            res = model.generate_content(prompt, generation_config=generation_config)
-                            st.session_state.policy_cache[signature] = res.text
-                            with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
-                            st.session_state[editor_key] = res.text
-                            st.success(f"Analisis Selesai (Engine: {model_name} - Mode Dinamis)")
-                            st.rerun()
-
-                    except Exception as e: st.error(f"Error AI: {e}")
-
-        if editor_key in st.session_state:
-            st.markdown("---")
-            st.session_state[editor_key] = st.text_area(
-                "✍️ Ruang Editor Laporan:", value=st.session_state[editor_key], height=500,
-                help="Anda bisa mengubah, menambah, atau menghapus narasi AI di sini sebelum laporan difinalisasi."
-            )
-            with st.expander("🔍 Pratinjau Hasil Akhir Laporan", expanded=True):
-                st.markdown(st.session_state[editor_key])
-            final_policy_text = st.session_state[editor_key]
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        if final_policy_text:
-            st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
-            st.markdown("#### 📑 Export Executive Brief")
-            st.caption("Download laporan berformat presentasi eksekutif (HTML Interaktif). Bisa di-Save as PDF saat dibuka.")
-            try:
-                import markdown
-                import re
-                import copy
-                fig_export = copy.deepcopy(fig) if 'fig' in locals() else go.Figure()
-                for trace in fig_export.data:
-                    trace_type = getattr(trace, 'type', 'scatter')
-                    if trace_type == 'scatter':
-                        if trace.name and "Proyeksi" in trace.name:
-                            jml_titik = len(trace.x) if trace.x is not None else len(trace.y)
-                            pola_posisi = ['bottom center', 'top center'] * (jml_titik // 2 + 1)
-                            trace.textposition = pola_posisi[:jml_titik]
-                            trace.textfont = dict(size=9, color='#065f46', weight='bold')
-                        elif trace.name and "Realisasi" in trace.name:
-                            jml_titik = len(trace.x) if trace.x is not None else len(trace.y)
-                            pola_posisi = ['top center'] * jml_titik
-                            if jml_titik > 0: pola_posisi[-1] = 'top left'
-                            trace.textposition = pola_posisi
-                            trace.textfont = dict(size=9, color='#92400e', weight='bold')
-
-                fig_export.update_layout(margin=dict(t=60, b=60, l=30, r=80))
-                chart_html = fig_export.to_html(full_html=False, include_plotlyjs='cdn', default_height='450px')
-                
-                html_policy = markdown.markdown(final_policy_text)
-                html_policy = html_policy.replace("<ul>", "<ul class='premium-list'>")
-                html_policy = html_policy.replace("<li>", "<li>")
-                html_policy = html_policy.replace("<h3>", "<h3 class='policy-title'>✨ ")
-                html_policy = html_policy.replace("<strong>", "<strong class='highlight-text'>")
-                
-                def parse_to_html_list(data_str, is_market=False):
-                    if not data_str: return "<p>Data tidak tersedia.</p>"
-                    clean_data = data_str.replace('\n', ' | ')
-                    html_list = "<ul class='data-list'>"
-                    for item in clean_data.split(' | '):
-                        item_clean = item.strip()
-                        if item_clean and "tidak tersedia" not in item_clean.lower():
-                            if is_market: html_list += f"<li><span class='bullet-blue'></span> {item_clean}</li>"
-                            else:
-                                if "-" in item_clean: html_list += f"<li><span class='badge-red'>▼</span> {item_clean}</li>"
-                                else: html_list += f"<li><span class='badge-blue'>▲</span> {item_clean}</li>"
-                    html_list += "</ul>"
-                    return html_list if "<li" in html_list else "<p>Data tidak tersedia.</p>"
-
-                html_monthly = parse_to_html_list(monthly_summary_str, False)
-                db_str = locals().get('daily_berjalan_str', daily_summary_str)
-                dr_str = locals().get('daily_rata_str', daily_summary_str)
-                html_daily_berjalan = parse_to_html_list(db_str, True)
-                html_daily_rata = parse_to_html_list(dr_str, True)
-
-                html_template = f"""
-                <!DOCTYPE html>
-                <html lang="id">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Brief: Macroeconomic Update RI</title>
-                    <style>
-                        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
-                        body {{ font-family: 'Plus Jakarta Sans', sans-serif; background-color: #cbd5e1; color: #334155; padding: 50px 20px; line-height: 1.6; margin: 0; }}
-                        .report-container {{ max-width: 1100px; margin: 0 auto; background: #ffffff; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3); overflow: hidden; }}
-                        .header {{ background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); padding: 50px 70px; color: white; }}
-                        .header h1 {{ font-size: 40px; font-weight: 800; margin: 0 0 10px 0; color: #ffffff; letter-spacing: -0.5px; line-height: 1.2; }}
-                        .header p {{ font-size: 16px; color: #94a3b8; margin: 0; letter-spacing: 0.5px; }}
-                        .content-body {{ padding: 40px 70px 60px 70px; }}
-                        .section-header {{ display: flex; align-items: center; justify-content: space-between; margin: 40px 0 20px 0; }}
-                        .section-label {{ font-size: 22px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 12px; margin: 0; }}
-                        .section-label span {{ background: #eff6ff; border: 1px solid #bfdbfe; padding: 8px 12px; border-radius: 10px; font-size: 18px; }}
-                        .tab-container {{ display: flex; gap: 10px; background: #f8fafc; padding: 6px; border-radius: 12px; border: 1px solid #e2e8f0; }}
-                        .tab-btn {{ background: transparent; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 700; font-family: inherit; color: #64748b; transition: 0.3s; font-size: 14px; }}
-                        .tab-btn:hover {{ background: #e2e8f0; color: #0f172a; }}
-                        .tab-btn.active {{ background: #3b82f6; color: white; box-shadow: 0 2px 4px rgba(59,130,246,0.3); }}
-                        .chart-wrapper {{ background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); margin-bottom: 50px; }}
-                        .data-list {{ list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }}
-                        .data-list li {{ background: #ffffff; padding: 14px 16px; border-radius: 10px; border: 1px solid #e2e8f0; font-size: 13.5px; color: #334155; display: flex; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); font-weight: 600; margin: 0; }}
-                        .bullet-blue {{ display: inline-block; width: 10px; height: 10px; background: #3b82f6; border-radius: 50%; flex-shrink: 0; margin-right: 10px; }}
-                        .badge-blue {{ background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 11px; flex-shrink: 0; }}
-                        .badge-red {{ background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 11px; flex-shrink: 0; }}
-                        .ai-box {{ background: linear-gradient(145deg, #f8fafc, #eff6ff); border: 1px solid #bfdbfe; border-radius: 20px; padding: 40px; margin-top: 60px; position: relative; }}
-                        .ai-box::before {{ content:''; position: absolute; top:0; left:0; width:100%; height:6px; background: linear-gradient(90deg, #2563eb, #9333ea); border-radius: 20px 20px 0 0; }}
-                        .policy-title {{ color: #1e3a8a; font-size: 20px; font-weight: 800; border-bottom: 2px dashed #cbd5e1; padding-bottom: 12px; margin-top: 35px; margin-bottom: 20px; }}
-                        .premium-list {{ list-style: none; padding: 0; margin: 0; }}
-                        .premium-list li {{ background: #ffffff; border: 1px solid #e2e8f0; border-left: 5px solid #3b82f6; padding: 25px 30px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); font-size: 15.5px; color: #1e293b; line-height: 1.8; }}
-                        .highlight-text {{ color: #2563eb; font-weight: 800; }}
-                        .footer {{ text-align: center; padding: 30px; margin-top: 50px; color: #94a3b8; font-size: 13px; border-top: 1px solid #e2e8f0; }}
-                    </style>
-                    <script>
-                        function openTabPH(evt, tabName) {{
-                            var i, tabcontent, tablinks;
-                            tabcontent = document.getElementsByClassName("tab-content-ph");
-                            for (i = 0; i < tabcontent.length; i++) {{ tabcontent[i].style.display = "none"; }}
-                            tablinks = document.getElementsByClassName("tab-btn-ph");
-                            for (i = 0; i < tablinks.length; i++) {{ tablinks[i].className = tablinks[i].className.replace(" active", ""); }}
-                            document.getElementById(tabName).style.display = "block";
-                            evt.currentTarget.className += " active";
-                        }}
-                    </script>
-                </head>
-                <body>
-                    <div class="report-container">
-                        <div class="header">
-                            <h1>Macroeconomic Brief</h1>
-                            <p>Analisis Perkembangan Ekonomi Makro Bappenas RI</p>
-                        </div>
-                        <div class="content-body">
-                            <div class="section-header"><div class="section-label"><span>📈</span> Proyeksi Pertumbuhan Ekonomi (DFM)</div></div>
-                            <div class="chart-wrapper">{chart_html}</div>
-                            <div class="section-header"><div class="section-label"><span>🏢</span> Kinerja Seluruh Sektor Riil</div></div>
-                            {html_monthly}
-                            <div class="section-header">
-                                <div class="section-label"><span>⚡</span> Volatilitas Pasar Harian</div>
-                                <div class="tab-container">
-                                    <button class="tab-btn tab-btn-ph active" onclick="openTabPH(event, 'ph-berjalan')">Data Berjalan</button>
-                                    <button class="tab-btn tab-btn-ph" onclick="openTabPH(event, 'ph-rata')">Rata-rata</button>
-                                </div>
-                            </div>
-                            <div id="ph-berjalan" class="tab-content-ph" style="display: block;">{html_daily_berjalan}</div>
-                            <div id="ph-rata" class="tab-content-ph" style="display: none;">{html_daily_rata}</div>
-                            <div class="ai-box">
-                                <div class="section-label" style="margin-top: 0; margin-bottom: 25px; border:none; padding:0;"><span>🧠</span> Rekomendasi Kebijakan</div>
-                                {html_policy}
-                            </div>
-                            <div class="footer">Dokumen ini dihasilkan oleh model AI.<br>Dicetak pada: <strong>{pd.Timestamp.now().strftime('%d %B %Y %H:%M')} WIB</strong></div>
-                        </div>
-                    </div>
-                </body>
-                </html>
-                """
-                st.download_button(label="📥 Download Laporan Eksekutif (.html)", data=html_template, file_name="Laporan_Brief_Bappenas.html", mime="text/html", type="primary")
-            except Exception as e:
-                st.warning(f"Gagal menyiapkan dokumen HTML. Error detail: {e}")
 
 # =========================================================================
 # MODUL 2: SEKTOR EKSTERNAL & FISKAL
 # =========================================================================
 elif main_menu == "🌍 Sektor Eksternal & Fiskal":
     
-    # -------------------------------------------------------------------------
-    # SIDEBAR KHUSUS MODUL SEKTOR EKSTERNAL
-    # -------------------------------------------------------------------------
     with st.sidebar:
         st.markdown("### 🇮🇩 BI-BAPPENAS")
         st.divider()
-
-        # Skenario & Tahun
         st.markdown("**BASELINE SKENARIO**")
-        scen = st.radio(
-            "Skenario", ["med", "high"], horizontal=True,
-            format_func=lambda x: "Med" if x == "med" else "High",
-        )
-
+        scen = st.radio("Skenario", ["med", "high"], horizontal=True, format_func=lambda x: "Med" if x == "med" else "High")
         st.markdown("**TAHUN PROYEKSI**")
         yr = st.select_slider("Tahun", options=YEARS, value=2026)
 
@@ -1209,17 +1010,11 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         nt_default  = D["nt"][yr]
         icp_default = D["icp"][yr]
 
-        # Preset
         st.divider()
         st.markdown("**PRESET SKENARIO CEPAT**")
         preset = st.selectbox("Pilih preset", [
-            "-- pilih --",
-            "📊 Base Med",
-            "📈 Base High",
-            "📉 Depresiasi (NT 19.500)",
-            "🛢 Minyak Rendah ($40)",
-            "🔥 Minyak Tinggi ($100)",
-            "⚡ Twin Shock (NT 20.000, ICP $100)",
+            "-- pilih --", "📊 Base Med", "📈 Base High", "📉 Depresiasi (NT 19.500)",
+            "🛢 Minyak Rendah ($40)", "🔥 Minyak Tinggi ($100)", "⚡ Twin Shock (NT 20.000, ICP $100)",
         ])
 
         if   "Depresiasi" in preset: nt_init, oil_init = 19_500,       icp_default
@@ -1229,28 +1024,22 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         else:                        nt_init, oil_init = nt_default,  icp_default
 
         st.divider()
-
-        # Input NT & ICP
         st.markdown("**NILAI TUKAR (Rp/USD)**")
-        nt = st.number_input(
-            "NT", min_value=10_000, max_value=30_000,
-            value=nt_init, step=50,
-            label_visibility="collapsed",
-        )
+        nt = st.number_input("NT", min_value=10_000, max_value=30_000, value=nt_init, step=50, label_visibility="collapsed")
         st.caption(f"Baseline {scen.upper()} {yr}: Rp{nt_default:,} — nilai naik = depresiasi Rupiah")
 
         st.markdown("**HARGA MINYAK ICP (USD/bbl)**")
-        oil = st.number_input(
-            "ICP", min_value=20, max_value=150,
-            value=oil_init, step=1,
-            label_visibility="collapsed",
-        )
+        oil = st.number_input("ICP", min_value=20, max_value=150, value=oil_init, step=1, label_visibility="collapsed")
         st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
 
-        # Simulasi tahun terpilih
         b_sim, s_sim = simulate_eksternal(nt, oil, yr, scen)
+        
+        # Simpan State Eksternal untuk AI
+        st.session_state['ext_nt'] = nt
+        st.session_state['ext_oil'] = oil
+        st.session_state['ext_gdp_drop'] = s_sim["gdp"] - b_sim["gdp"]
+        st.session_state['ext_def'] = s_sim["defpdb"] - b_sim["defpdb"]
 
-        # Panel delta
         st.divider()
         st.markdown(f"**DELTA VS BASELINE {yr}**")
         delta_rows = [
@@ -1268,9 +1057,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 
         st.caption(f"Skenario: {scen.upper()} | NT Rp{nt:,} | ICP ${oil}")
 
-    # -------------------------------------------------------------------------
-    # MAIN AREA MODUL 2
-    # -------------------------------------------------------------------------
     st.markdown("### 🌍 Dashboard Sensitivitas Eksternal & Fiskal RI")
     
     keys = ["ca", "exp", "imp", "reserves", "gdp", "gexp", "gimp",
@@ -1306,9 +1092,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         "📋 Tabel Lengkap",
     ])
 
-    # -------------------------------------------------------------------------
-    # TAB BOP
-    # -------------------------------------------------------------------------
     with tab_bop:
         bop_kpis = [
             ("🔵 Transaksi Berjalan",  f"{s_sim['ca']:.2f}",       "Miliar USD", s_sim["ca"]-b_sim["ca"],             " Miliar USD"),
@@ -1354,19 +1137,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             fig.update_layout(**fig_layout("Sensitivitas CA vs Nilai Tukar", xaxis_title="NT (ribu Rp)", yaxis_title="CA (Miliar USD)"))
             st.plotly_chart(fig, use_container_width=True)
 
-        st.info(
-            "📌 **Catatan:** Data BOP dari sheet 3.1 BOP. Med 2026: CA -$4,5 Miliar USD, Ekspor $302 Miliar USD, Caddev $161 Miliar USD. "
-            "Elastisitas ekspor non-migas: 0.15xNT; ekspor migas: 0.80xICP. "
-            "Impor non-migas: -0.25xNT; impor migas: 0.95xICP. "
-            "Caddev = baseline + Delta Total BOP."
-        )
-
-    # -------------------------------------------------------------------------
-    # TAB GDP
-    # -------------------------------------------------------------------------
     with tab_gdp:
-        
-        # KPI
         gdp_kpis = [
             ("🟢 PDB Growth",     f"{s_sim['gdp']:.2f}%",  s_sim["gdp"]-b_sim["gdp"],  " pp"),
             ("🔵 Konsumsi RT",    f"{s_sim['cons']:.2f}%", s_sim["cons"]-b_sim["cons"]," pp"),
@@ -1395,12 +1166,10 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             fig.update_layout(**fig_layout("Sensitivitas PDB vs Nilai Tukar", xaxis_title="NT (ribu Rp)", yaxis_title="PDB Growth (%)"))
             st.plotly_chart(fig, use_container_width=True)
 
-        # Tabel transmisi Sesuai Screenshot Asli
         tx = s_sim["tx"]
         st.markdown("#### 🔴 MEKANISME TRANSMISI: NILAI TUKAR & HARGA MINYAK → PDB")
         
         col_nt, col_icp = st.columns(2)
-
         def color_val(val, inverse=False):
             if abs(val) < 0.005: return f"<span style='color:#6b7280; font-weight:bold;'>{val:+.2f}pp</span>"
             is_green = (val > 0) if not inverse else (val < 0)
@@ -1463,23 +1232,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             """
             st.markdown(html_icp, unsafe_allow_html=True)
 
-        st.markdown("""
-        <div style='font-size: 12.5px; color: #475569; background: #fffbeb; padding: 12px 15px; border-radius: 8px; border: 1px solid #fde68a; line-height: 1.6; margin-top: 15px;'>
-            ⚠️ <strong>Catatan arah:</strong> Indonesia adalah <em>net importir</em> BBM sejak ~2004. Kenaikan harga minyak & depresiasi NT secara netto <strong>memperburuk</strong> CA (impor mahal dalam USD, ekspor migas tidak cukup mengimbangi) dan menekan PDB melalui jalur inflasi impor yang memukul konsumsi rumah tangga dan investasi.
-        </div>
-        """, unsafe_allow_html=True)
-
-    # -------------------------------------------------------------------------
-    # TAB APBN
-    # -------------------------------------------------------------------------
     with tab_apbn:
-        st.warning(
-            "🏛 **Logika APBN:** Penerimaan migas (PPh Migas + PNBP SDA Migas) sensitif terhadap ICP. "
-            "Subsidi energi naik saat ICP naik dan NT melemah (biaya impor BBM meningkat). "
-            "Batas defisit 3% PDB per UU Keuangan Negara. "
-            "Skenario High 2027: ICP $75 menghasilkan defisit/PDB -2,2% vs Med -1,7%."
-        )
-
         apbn_kpis = [
             ("🔵 Pendapatan Negara", f"Rp {s_sim['rev']:.0f} T",  s_sim["rev"]-b_sim["rev"],       " T"),
             ("🔴 Belanja Negara",    f"Rp {s_sim['bel']:.0f} T",  s_sim["bel"]-b_sim["bel"],       " T"),
@@ -1502,7 +1255,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             alert_s = "🔴" if abs(s_sim['defpdb']) > limit else "🟢"
             st.markdown(f"**Simulasi {alert_s}:** `{s_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(s_sim["defpdb"]) / limit, 1.0))
-        st.caption("Batas legal: -3.0% PDB (UU Keuangan Negara)")
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -1537,38 +1289,17 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         with col_rev:
             st.markdown("##### 🔵 Dampak ke Sisi Pendapatan")
             st.dataframe(pd.DataFrame({
-                "Komponen": [
-                    "PPh Migas (ICP sensitif)",
-                    "PNBP SDA Migas (ICP sensitif)",
-                    "Bea Keluar (NT + komoditas)",
-                    "Delta Total Pendapatan",
-                ],
-                "Delta (Rp T)": [
-                    round(ax["pph"],   2),
-                    round(ax["sda"],   2),
-                    round(ax["bea"],   2),
-                    round(ax["rev"],   2),
-                ],
-            }), hide_index=True, width="stretch")
+                "Komponen": ["PPh Migas (ICP sensitif)","PNBP SDA Migas (ICP sensitif)","Bea Keluar (NT + komoditas)","Delta Total Pendapatan"],
+                "Delta (Rp T)": [round(ax["pph"],2),round(ax["sda"],2),round(ax["bea"],2),round(ax["rev"],2)],
+            }), hide_index=True, use_container_width=True)
 
         with col_bel:
             st.markdown("##### 🔴 Tekanan Sisi Belanja")
             st.dataframe(pd.DataFrame({
-                "Komponen": [
-                    "Subsidi Energi (ICP naik + NT melemah)",
-                    "Bunga Utang Valas (NT melemah)",
-                    "Delta Total Belanja",
-                ],
-                "Delta (Rp T)": [
-                    round(ax["sube"],  2),
-                    round(ax["bunga"], 2),
-                    round(ax["bel"],   2),
-                ],
-            }), hide_index=True, width="stretch")
+                "Komponen": ["Subsidi Energi (ICP naik + NT melemah)","Bunga Utang Valas (NT melemah)","Delta Total Belanja"],
+                "Delta (Rp T)": [round(ax["sube"],2),round(ax["bunga"],2),round(ax["bel"],2)],
+            }), hide_index=True, use_container_width=True)
 
-    # -------------------------------------------------------------------------
-    # TAB TABEL LENGKAP
-    # -------------------------------------------------------------------------
     with tab_table:
         st.markdown("#### Tabel Lengkap BOP, GDP & APBN — Baseline vs Simulasi")
 
@@ -1617,21 +1348,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 "Satuan":    unit,
             })
 
-        st.dataframe(
-            pd.DataFrame(rows_tbl),
-            hide_index=True,
-            width="stretch",
-            height=720,
-        )
-
-        st.caption(
-            "Baseline = skenario Med/High dari Excel (sheet 3.1 BOP, 2.1 GDP Exp Riil, 4.1 APBN). "
-            "Simulasi = baseline + efek elastisitas parsial dari deviasi NT & ICP.\n"
-            "GDP: komponen aktif berubah Ekspor, Impor, Konsumsi & Investasi.\n"
-            "APBN: penerimaan migas & PNBP SDA sensitif ICP; subsidi energi naik saat ICP naik dan NT melemah. "
-            "Defisit maks -3% PDB (UU).\n"
-            "BOP: Miliar USD | GDP: % | APBN: Rp Triliun."
-        )
+        st.dataframe(pd.DataFrame(rows_tbl), hide_index=True, use_container_width=True, height=720)
 
 # =========================================================================
 # MODUL 3: EKONOMI DAERAH (WIP)
@@ -1639,3 +1356,175 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 elif main_menu == "📍 Ekonomi Daerah (WIP)":
     st.markdown("### 📍 Command Center: Ekonomi Kewilayahan")
     st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")
+
+# =========================================================================
+# MODUL 4: AI EXECUTIVE BRIEF (SYNTHESIS K/L)
+# =========================================================================
+elif main_menu == "🧠 AI Executive Brief (Synthesis)":
+    st.markdown("""
+    <style>
+    .glass-card { background: rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); padding: 24px; margin-bottom: 24px; }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("### 🧠 AI Policy Synthesis & Executive Brief")
+    st.markdown("Modul ini mensintesis data dari seluruh *dashboard* untuk memproduksi rumusan kebijakan lintas sektoral (K/L) yang komprehensif.")
+
+    # Pengecekan State Data
+    missing_data = []
+    if 'mac_monthly' not in st.session_state: missing_data.append("Makro Nasional")
+    if 'ext_nt' not in st.session_state: missing_data.append("Sektor Eksternal")
+
+    if missing_data:
+        st.warning(f"⚠️ **Data Belum Lengkap!** Silakan buka tab **{', '.join(missing_data)}** terlebih dahulu agar sistem AI dapat merekam data terbaru sebelum melakukan *generate*.")
+    else:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        
+        # Ekstrak data dari session state
+        mac_view = st.session_state.get('mac_view', '2026')
+        mac_avg = st.session_state.get('mac_avg', 0)
+        mac_target = st.session_state.get('mac_target', 0)
+        mac_month = st.session_state.get('mac_monthly', '')
+        mac_heat = st.session_state.get('mac_heat', '')
+        mac_day = st.session_state.get('mac_daily', '')
+        
+        ext_nt = st.session_state.get('ext_nt', 16700)
+        ext_oil = st.session_state.get('ext_oil', 65)
+        ext_gdp_drop = st.session_state.get('ext_gdp_drop', 0)
+        ext_def = st.session_state.get('ext_def', 0)
+
+        signature = make_signature(mac_view, mac_avg, mac_target, mac_month, mac_day, ext_nt, ext_oil)
+        editor_key = f"editor_synthesis_{signature}"
+        final_policy_text = ""
+
+        if signature in st.session_state.policy_cache:
+            if editor_key not in st.session_state:
+                st.session_state[editor_key] = st.session_state.policy_cache[signature]
+            st.success("✅ Draf Sintesis Lintas Sektor tersedia. Silakan tinjau dan edit di bawah.")
+
+        if signature not in st.session_state.policy_cache:
+            if st.button("Generate Sintesis Kebijakan (AI Bappenas)"):
+                genai.configure(api_key=USER_API_KEY)
+                with st.spinner('AI sedang menganalisis kerentanan silang dan merumuskan arahan K/L...'):
+                    try:
+                        avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                        model_name = next((m for m in avail if 'flash' in m), avail[0] if avail else None)
+
+                        if not model_name: st.error("Gagal mendeteksi model. Cek API Key.")
+                        else:
+                            generation_config = genai.types.GenerationConfig(temperature=0.7, top_p=0.9)
+                            model = genai.GenerativeModel(model_name)
+                            
+                            prompt = f"""
+Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Bappenas RI. 
+Tugas Anda adalah merumuskan "Executive Synthesis" untuk mengarahkan kebijakan Kementerian/Lembaga (K/L). Pastikan nada tulisan tegas, analitis, sejalan dengan core value BerAKHLAK, dan menggunakan gaya bahasa teknokratis Bappenas.
+
+=====================
+1. KONTEKS MAKRO DOMESTIK
+=====================
+Fokus Indikator: {mac_view}
+Target PDB APBN: {mac_target}% | Rata-rata Proyeksi DFM: {mac_avg:.2f}%
+Status Real Sector: {mac_month}
+Momentum & Threshold: {mac_heat}
+Pasar Harian: {mac_day}
+
+=====================
+2. KONTEKS GUNCANGAN EKSTERNAL (SIMULASI)
+=====================
+Simulasi Nilai Tukar: Rp {ext_nt}/USD | Harga Minyak (ICP): $ {ext_oil}/bbl
+Dampak ke Pertumbuhan Ekonomi (PDB): {ext_gdp_drop:+.2f} percentage points.
+Dampak ke Defisit APBN: {ext_def:+.2f} percentage points thd PDB.
+
+=====================
+TUGAS & STRUKTUR OUTPUT:
+=====================
+Buatlah ringkasan eksekutif (Executive Brief) dengan struktur berikut:
+
+**1. SINTESIS KONDISI EKONOMI**
+(Buat 2 paragraf padat yang merangkum persilangan antara anomali di makro domestik dengan potensi pukulan dari guncangan eksternal NT dan ICP di atas. Jangan mengulang angka mentah, tapi jelaskan "what it means").
+
+**2. ARAHAN KEBIJAKAN LINTAS K/L (MATRIKS TINDAKAN)**
+(Berikan rekomendasi spesifik, BUKAN normatif/klise, untuk 4 otoritas di bawah ini agar menekan risiko PDB dan defisit dari skenario di atas):
+* **Kementerian Keuangan:** (Fokus ke bantalan fiskal, subsidi, dan penerimaan perpajakan/bea).
+* **Bank Indonesia:** (Fokus ke bauran moneter dan stabilisasi DNDF/SBN).
+* **Kementerian Perindustrian & Kemendag:** (Fokus menahan *imported inflation* pada bahan baku dan menjaga pasokan).
+* **Kemendagri / Pemda (Konteks Kewilayahan):** (Fokus ke pengendalian inflasi daerah dan proteksi daya beli lokal).
+
+Catatan Khusus: Jangan gunakan kata-kata "Berdasarkan data di atas..." atau semacamnya. Langsung masuk ke gaya penulisan dokumen resmi pemerintahan.
+"""
+                            res = model.generate_content(prompt, generation_config=generation_config)
+                            st.session_state.policy_cache[signature] = res.text
+                            with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
+                            st.session_state[editor_key] = res.text
+                            st.success("Sintesis Selesai!")
+                            st.rerun()
+
+                    except Exception as e: st.error(f"Error AI: {e}")
+
+        if editor_key in st.session_state:
+            st.markdown("---")
+            st.session_state[editor_key] = st.text_area(
+                "✍️ Ruang Editor Eksekutif:", value=st.session_state[editor_key], height=500,
+                help="Silakan modifikasi draf ini sebelum diekspor menjadi laporan akhir."
+            )
+            with st.expander("🔍 Pratinjau Sintesis Akhir", expanded=True):
+                st.markdown(st.session_state[editor_key])
+            final_policy_text = st.session_state[editor_key]
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if final_policy_text:
+            st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
+            st.markdown("#### 📑 Export Executive Brief")
+            st.caption("Unduh dalam format HTML yang sudah dioptimasi untuk Print PDF. **Cara Penggunaan:** Buka file HTML yang diunduh, otomatis akan muncul jendela *Print*. Pilih **Save as PDF** (Simpan sebagai PDF).")
+            
+            try:
+                import markdown
+                
+                html_policy = markdown.markdown(final_policy_text)
+                html_policy = html_policy.replace("<ul>", "<ul class='premium-list'>")
+                html_policy = html_policy.replace("<li>", "<li>")
+                html_policy = html_policy.replace("<strong>", "<strong class='highlight-text'>")
+                
+                html_template = f"""
+                <!DOCTYPE html>
+                <html lang="id">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Executive Brief Bappenas</title>
+                    <style>
+                        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
+                        body {{ font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #334155; line-height: 1.7; margin: 0; padding: 0; }}
+                        .page-container {{ max-width: 800px; margin: 40px auto; background: #ffffff; padding: 60px 70px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }}
+                        .header-print {{ border-bottom: 3px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; text-align: center; }}
+                        .header-print h1 {{ color: #0f172a; font-size: 28px; margin: 0 0 5px 0; }}
+                        .header-print p {{ color: #64748b; font-size: 14px; margin: 0; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }}
+                        .content h2, .content h3 {{ color: #1e3a8a; margin-top: 30px; }}
+                        .premium-list {{ padding-left: 20px; }}
+                        .premium-list li {{ margin-bottom: 12px; font-size: 15px; }}
+                        .highlight-text {{ color: #0f172a; font-weight: 700; }}
+                        @media print {{
+                            body {{ background-color: #ffffff; }}
+                            .page-container {{ box-shadow: none; margin: 0; padding: 20px; max-width: 100%; }}
+                        }}
+                    </style>
+                    <script>
+                        window.onload = function() {{ window.print(); }}
+                    </script>
+                </head>
+                <body>
+                    <div class="page-container">
+                        <div class="header-print">
+                            <h1>Executive Brief: Sintesis Makro & Kebijakan K/L</h1>
+                            <p>Kementerian PPN / Bappenas RI</p>
+                        </div>
+                        <div class="content">
+                            {html_policy}
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                st.download_button(label="📥 Unduh Executive Summary (Siap Print PDF)", data=html_template, file_name="Sintesis_Kebijakan_Bappenas.html", mime="text/html", type="primary")
+            except Exception as e:
+                st.warning(f"Gagal menyiapkan dokumen HTML. Error detail: {e}")
