@@ -285,7 +285,6 @@ def metric_delta_color(val: float) -> str:
     if dc == "red":   return "inverse"
     return "off"
 
-
 # ==========================================
 # 3. DATA LOADING & DFM ENGINE (MAKRO NASIONAL)
 # ==========================================
@@ -443,7 +442,7 @@ def run_full_dfm_replication():
 
 
 # ==========================================
-# 4. SISTEM NAVIGASI DASHBOARD (SIDEBAR GLOBAL)
+# 4. SISTEM NAVIGASI DASHBOARD (MENU DI ATAS)
 # ==========================================
 
 st.markdown("""
@@ -473,6 +472,9 @@ st.markdown("""
     font-size: 13px; font-weight: 600; margin-bottom: 14px;
 }
 div[data-testid="metric-container"] > div { font-family: monospace; }
+
+/* Tambahan style agar radio button di atas terlihat lebih rapi seperti tab */
+div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify-content: center; background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -487,22 +489,26 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# === MENU UTAMA SEKARANG DI ATAS (MAIN AREA) ===
+main_menu = st.radio(
+    "Pilih Modul Analisis:",
+    ["📊 Makro Nasional (DFM)", "🌍 Sektor Eksternal & Fiskal", "📍 Ekonomi Daerah (WIP)"],
+    index=0,
+    horizontal=True,
+    label_visibility="collapsed"
+)
+
 st.markdown(
     '<div class="disclaimer">&#9888;&#65039; <strong>Disclaimer:</strong>'
     ' Modul Sektor Eksternal dan Daerah masih dalam tahap pengembangan.</div>',
     unsafe_allow_html=True,
 )
+st.divider()
 
-with st.sidebar:
-    st.markdown("### 🎛️ MENU UTAMA")
-    main_menu = st.radio(
-        "Pilih Modul Analisis:",
-        ["📊 Makro Nasional (DFM)", "🌍 Sektor Eksternal & Fiskal", "📍 Ekonomi Daerah (WIP)"],
-        index=0
-    )
-    
-    if main_menu == "🌍 Sektor Eksternal & Fiskal":
-        st.divider()
+# === SIDEBAR SEKARANG HANYA MUNCUL UNTUK PARAMETER SIMULASI (MODUL 2) ===
+if main_menu == "🌍 Sektor Eksternal & Fiskal":
+    with st.sidebar:
+        st.markdown("### ⚙️ PARAMETER SIMULASI")
         st.markdown("**BASELINE SKENARIO**")
         scen = st.radio("Skenario", ["med", "high"], horizontal=True, format_func=lambda x: "Med" if x == "med" else "High")
         st.markdown("**TAHUN PROYEKSI**")
@@ -1278,7 +1284,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 
     with tab_bop:
         bop_kpis = [
-            ("🔵 Transaksi Berjalan",  f"{s_sim['ca']:.2f}",       "Miliar USD", s_sim["ca"]-b_sim["ca"],              " Miliar USD"),
+            ("🔵 Transaksi Berjalan",  f"{s_sim['ca']:.2f}",       "Miliar USD", s_sim["ca"]-b_sim["ca"],               " Miliar USD"),
             ("🟢 Ekspor Barang (fob)", f"{s_sim['exp']:.1f}",      "Miliar USD", s_sim["exp"]-b_sim["exp"],             " Miliar USD"),
             ("🔴 Impor Barang (fob)",  f"{s_sim['imp']:.1f}",      "Miliar USD", s_sim["imp"]-b_sim["imp"],             " Miliar USD"),
             ("🟠 Cadangan Devisa",     f"{s_sim['reserves']:.1f}", "Miliar USD", s_sim["reserves"]-b_sim["reserves"],  " Miliar USD"),
