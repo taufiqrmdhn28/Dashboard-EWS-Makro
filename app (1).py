@@ -1473,15 +1473,6 @@ Susun Executive Brief dengan 3 bagian utama:
         if final_policy_text:
             st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
             st.markdown("#### 📑 Export Executive Brief")
-            st.caption("Unduh dalam format HTML yang sudah dioptimasi untuk Print PDF. **Cara Penggunaan:** Buka file HTML yang diunduh, otomatis akan muncul jendela *Print*. Pilih **Save as PDF** (Simpan sebagai PDF).")
-            
-            try:
-                import markdown
-                
-                html_policy = markdown.markdown(final_policy_text)
-                html_policy = html_policy.replace("<ul>", "<ul class='premium-list'>")
-                html_policy = html_policy.replace("<li>", "<li>")
-                html_policy = html_policy.replace("<strong>", "<strong class='highlight-text'>")
                 
                 html_template = f"""
                 <!DOCTYPE html>
