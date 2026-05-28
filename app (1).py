@@ -1416,41 +1416,35 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                             model = genai.GenerativeModel(model_name)
                             
                             prompt = f"""
-Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Bappenas RI. 
-Tugas Anda adalah merumuskan "Executive Synthesis" untuk mengarahkan kebijakan Kementerian/Lembaga (K/L). Pastikan nada tulisan tegas, analitis, sejalan dengan core value BerAKHLAK, dan menggunakan gaya bahasa teknokratis Bappenas.
+Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Kementerian PPN/Bappenas. 
+Keluarkan narasi dengan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, terukur, namun tetap luwes dan tidak kaku.
 
 =====================
-1. KONTEKS MAKRO DOMESTIK
+DATA & EVIDENCE MAKRO-EKSTERNAL
 =====================
 Fokus Indikator: {mac_view}
-Target PDB APBN: {mac_target}% | Rata-rata Proyeksi DFM: {mac_avg:.2f}%
+Target PDB: {mac_target}% | Proyeksi DFM: {mac_avg:.2f}%
 Status Real Sector: {mac_month}
-Momentum & Threshold: {mac_heat}
+Momentum Indikator: {mac_heat}
 Pasar Harian: {mac_day}
+Guncangan Eksternal: NT Rp {ext_nt}/USD, ICP $ {ext_oil}/bbl
+Dampak Skenario Eksternal: PDB {ext_gdp_drop:+.2f} pp, Defisit APBN {ext_def:+.2f} pp thd PDB.
 
 =====================
-2. KONTEKS GUNCANGAN EKSTERNAL (SIMULASI)
+STRUKTUR EXECUTIVE BRIEF:
 =====================
-Simulasi Nilai Tukar: Rp {ext_nt}/USD | Harga Minyak (ICP): $ {ext_oil}/bbl
-Dampak ke Pertumbuhan Ekonomi (PDB): {ext_gdp_drop:+.2f} percentage points.
-Dampak ke Defisit APBN: {ext_def:+.2f} percentage points thd PDB.
+Tuliskan Executive Brief tanpa menyebutkan frasa klise seperti "Berdasarkan data di atas". Susun dengan 3 bagian utama:
 
-=====================
-TUGAS & STRUKTUR OUTPUT:
-=====================
-Buatlah ringkasan eksekutif (Executive Brief) dengan struktur berikut:
+**1. POSISI STRATEGIS BAPPENAS**
+(Deklarasikan stance/pandangan Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal, serta urgensi menjaga resiliensi ekonomi daerah. Harus mencerminkan helikopter view Bappenas).
 
-**1. SINTESIS KONDISI EKONOMI**
-(Buat 2 paragraf padat yang merangkum persilangan antara anomali di makro domestik dengan potensi pukulan dari guncangan eksternal NT dan ICP di atas. Jangan mengulang angka mentah, tapi jelaskan "what it means").
+**2. SINTESIS KONDISI EKONOMI**
+(Buat narasi padat yang menghubungkan anomali makro domestik dengan potensi pukulan dari guncangan eksternal (Rupiah & Minyak). Jelaskan maknanya secara ekonomi politik tanpa mengulang-ulang angka mentah).
 
-**2. ARAHAN KEBIJAKAN LINTAS K/L (MATRIKS TINDAKAN)**
-(Berikan rekomendasi spesifik, BUKAN normatif/klise, untuk 4 otoritas di bawah ini agar menekan risiko PDB dan defisit dari skenario di atas):
-* **Kementerian Keuangan:** (Fokus ke bantalan fiskal, subsidi, dan penerimaan perpajakan/bea).
-* **Bank Indonesia:** (Fokus ke bauran moneter dan stabilisasi DNDF/SBN).
-* **Kementerian Perindustrian & Kemendag:** (Fokus menahan *imported inflation* pada bahan baku dan menjaga pasokan).
-* **Kemendagri / Pemda (Konteks Kewilayahan):** (Fokus ke pengendalian inflasi daerah dan proteksi daya beli lokal).
-
-Catatan Khusus: Jangan gunakan kata-kata "Berdasarkan data di atas..." atau semacamnya. Langsung masuk ke gaya penulisan dokumen resmi pemerintahan.
+**3. ARAHAN KEBIJAKAN STRATEGIS LINTAS K/L**
+(Berikan rekomendasi kebijakan agregat untuk diorkestrasikan kepada seluruh Kementerian/Lembaga terkait, TANPA menyebutkan nama K/L secara spesifik. Bagi menjadi 2 aspek utama):
+* **Aspek Makro:** (Fokus pada orkestrasi bauran kebijakan fiskal-moneter, penjagaan target pertumbuhan, manajemen defisit, dan stabilitas nilai tukar secara agregat).
+* **Aspek Mikro & Kewilayahan:** (Fokus pada intervensi sektoral, rantai pasok industri, tata niaga, pengendalian inflasi di tingkat tapak/daerah, dan proteksi daya beli masyarakat).
 """
                             res = model.generate_content(prompt, generation_config=generation_config)
                             st.session_state.policy_cache[signature] = res.text
