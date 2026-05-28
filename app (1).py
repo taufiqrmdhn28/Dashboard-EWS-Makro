@@ -756,6 +756,19 @@ if main_menu == "📊 Makro Nasional (DFM)":
 
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
+
+        if not df_full_results.empty:
+            import io
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df_full_results.to_excel(writer, index=False, sheet_name='Nowcast Results')
+            st.download_button(
+                label="📥 Download Full Nowcast Results (Excel)",
+                data=buffer.getvalue(),
+                file_name="Replikasi_Final_MATLAB_Elaborated.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown("### 📈 Monitoring Data Harian")
         selected_daily_view = st.radio("Pilih Mode Tampilan Pasar:", ["Data Berjalan", "Data Rata-Rata"], horizontal=True, key="daily_view_toggle")
