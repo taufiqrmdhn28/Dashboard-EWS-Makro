@@ -1449,7 +1449,11 @@ Susun Executive Brief dengan 3 bagian utama:
 * **Aspek Makro:** (Fokus pada orkestrasi bauran kebijakan fiskal-moneter, penjagaan target pertumbuhan, manajemen defisit, dan stabilitas nilai tukar secara agregat).
 * **Aspek Mikro & Kewilayahan:** (Fokus pada intervensi sektoral, rantai pasok industri, tata niaga, pengendalian inflasi di tingkat tapak/daerah, dan proteksi daya beli masyarakat).
 """
-                            res = model.generate_content(prompt, generation_config=generation_config)
+                            res = model.generate_content(
+                                prompt, 
+                                generation_config=generation_config,
+                                request_options={"timeout": 600}
+                            )
                             st.session_state.policy_cache[signature] = res.text
                             with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
                             st.session_state[editor_key] = res.text
@@ -1473,6 +1477,15 @@ Susun Executive Brief dengan 3 bagian utama:
         if final_policy_text:
             st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
             st.markdown("#### 📑 Export Executive Brief")
+            st.caption("Unduh dalam format HTML yang elegan dan profesional untuk dilaporkan kepada pimpinan.")
+            
+            try:
+                import markdown
+                
+                html_policy = markdown.markdown(final_policy_text)
+                html_policy = html_policy.replace("<ul>", "<ul class='premium-list'>")
+                html_policy = html_policy.replace("<li>", "<li>")
+                html_policy = html_policy.replace("<strong>", "<strong class='highlight-text'>")
                 
                 html_template = f"""
                 <!DOCTYPE html>
@@ -1607,3 +1620,5 @@ Susun Executive Brief dengan 3 bagian utama:
                     mime="text/html", 
                     type="primary"
                 )
+            except Exception as e:
+                st.warning(f"Gagal menyiapkan dokumen HTML. Error detail: {e}")
