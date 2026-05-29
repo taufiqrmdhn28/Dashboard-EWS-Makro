@@ -1509,7 +1509,7 @@ Tuliskan Executive Brief tanpa menyebutkan frasa klise seperti "Berdasarkan data
             st.markdown("#### 📑 Export Executive Brief")
             st.caption("Unduh dalam format HTML yang sudah dioptimasi untuk Print PDF. **Cara Penggunaan:** Buka file HTML yang diunduh, otomatis akan muncul jendela *Print*. Pilih **Save as PDF** (Simpan sebagai PDF).")
             
-           try:
+            try:
                 import markdown
                 
                 html_policy = markdown.markdown(final_policy_text)
