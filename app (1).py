@@ -1444,16 +1444,24 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                             generation_config = genai.types.GenerationConfig(
                                 temperature=0.7, 
                                 top_p=0.9,
-                                max_output_tokens=2048
+                                max_output_tokens=8192
                             )
+                            safety_settings = [
+                                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+                            ]
                             model = genai.GenerativeModel(model_name)
                             
                             prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Kementerian PPN/Bappenas. 
-Keluarkan narasi dengan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, terukur, namun tetap luwes.
+Tugas Anda adalah menulis Executive Brief untuk dilaporkan kepada Menteri.
 
-ATURAN SANGAT PENTING:
-JANGAN gunakan kalimat pembuka atau penutup obrolan (seperti "Baik, berikut adalah laporannya", "Sebagai perencana ahli...", atau "Semoga laporan ini bermanfaat"). LANGSUNG berikan isi Executive Brief dari judul sampai selesai.
+ATURAN MUTLAK DAN SANGAT PENTING:
+1. JANGAN PERNAH memberikan kalimat pembuka percakapan seperti "Baik, berikut adalah draf...", "Sebagai Ahli Utama...", atau "Ini adalah hasilnya".
+2. LANGSUNG mulai teks Anda dengan Judul (Halaman).
+3. Gunakan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, dan tegas.
 
 =====================
 DATA & EVIDENCE MAKRO-EKSTERNAL
@@ -1469,27 +1477,37 @@ Dampak Skenario Eksternal: PDB {ext_gdp_drop:+.2f} pp, Defisit APBN {ext_def:+.2
 =====================
 STRUKTUR EXECUTIVE BRIEF:
 =====================
-Susun Executive Brief dengan 3 bagian utama:
+### [JUDUL EXECUTIVE BRIEF YANG TEGAS]
 
 **1. POSISI STRATEGIS BAPPENAS**
-(Deklarasikan stance Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal, serta urgensi menjaga resiliensi ekonomi daerah. Harus mencerminkan helicopter view).
+(Deklarasikan stance Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal. Harus mencerminkan helicopter view).
 
 **2. SINTESIS KONDISI EKONOMI**
 (Buat narasi padat yang menghubungkan anomali makro domestik dengan potensi pukulan dari guncangan eksternal (Rupiah & Minyak). Jelaskan maknanya secara ekonomi politik tanpa mengulang-ulang angka mentah).
 
 **3. ARAHAN KEBIJAKAN STRATEGIS LINTAS K/L**
-(Berikan rekomendasi kebijakan agregat untuk diorkestrasikan kepada seluruh Kementerian/Lembaga terkait, TANPA menyebutkan nama K/L secara spesifik. Bagi menjadi 2 aspek utama):
+(Berikan rekomendasi kebijakan agregat untuk diorkestrasikan kepada seluruh Kementerian/Lembaga terkait, bagi menjadi 2 aspek utama):
 * **Aspek Makro:** (Fokus pada orkestrasi bauran kebijakan fiskal-moneter, penjagaan target pertumbuhan, manajemen defisit, dan stabilitas nilai tukar secara agregat).
-* **Aspek Mikro & Kewilayahan:** (Fokus pada intervensi sektoral, rantai pasok industri, tata niaga, pengendalian inflasi di tingkat tapak/daerah, dan proteksi daya beli masyarakat).
+* **Aspek Mikro & Kewilayahan:** (Fokus pada intervensi sektoral, rantai pasok industri, tata niaga, pengendalian inflasi di daerah, dan proteksi daya beli masyarakat).
 """
                             res = model.generate_content(
                                 prompt, 
                                 generation_config=generation_config,
+                                safety_settings=safety_settings,
                                 request_options={"timeout": 600}
                             )
-                            st.session_state.policy_cache[signature] = res.text
+                            
+                            # Membersihkan kalau AI masih bandel kasih kalimat sapaan bot
+                            out_text = res.text
+                            if "Baik," in out_text or "Berikut" in out_text or "Sebagai" in out_text:
+                                if "###" in out_text:
+                                    out_text = out_text[out_text.find("###"):]
+                                elif "**1." in out_text:
+                                    out_text = out_text[out_text.find("**1."):]
+                            
+                            st.session_state.policy_cache[signature] = out_text
                             with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
-                            st.session_state[editor_key] = res.text
+                            st.session_state[editor_key] = out_text
                             st.success("Sintesis Selesai!")
                             st.rerun()
 
@@ -1569,7 +1587,7 @@ Susun Executive Brief dengan 3 bagian utama:
                         .content-area {{ 
                             padding: 50px; 
                         }}
-                        .content-area h1 {{
+                        .content-area h1, .content-area h3 {{
                             font-size: 24px;
                             color: #0f172a;
                             border-bottom: 2px solid #e2e8f0;
@@ -1591,11 +1609,6 @@ Susun Executive Brief dengan 3 bagian utama:
                             height: 24px;
                             background-color: #eab308;
                             border-radius: 4px;
-                        }}
-                        .content-area h3 {{ 
-                            color: #334155; 
-                            font-size: 17px; 
-                            margin-top: 25px; 
                         }}
                         .content-area p {{
                             font-size: 15px;
