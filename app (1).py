@@ -403,7 +403,8 @@ def run_full_dfm_replication():
         data_full.index = pd.to_datetime(data_full.index)
         data_full_resampled = data_full.resample('MS').first() 
         target_var = 'RGDP_growth'
-
+        
+        # --- PENYESUAIAN HYPERPARAMETER DFM (Sesuai MATLAB P.r=2, P.p=2) ---
         def get_actual_value(ref_period):
             target_date = ref_period.to_timestamp(how='end').replace(day=1).normalize()
             if target_date in data_full.index:
@@ -437,7 +438,8 @@ def run_full_dfm_replication():
             else:
                 end_q = data_full_resampled.loc[data_full_resampled.index <= obs_cutoff, [target_var]].resample(q_freq).last()
             
-            model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, k_factors=1, factor_orders=1, idiosyncratic_ar=1, standardize=True)
+            # --- Perbaikan Parameter (factors=2, factor_orders=2) ---
+            model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, factors=2, factor_orders=2, idiosyncratic_ar=1, standardize=True)
             res = model.fit(method='em', maxiter=500, tolerance=1e-5, disp=False)
             means = res.get_prediction(end=res.model.nobs + 24).predicted_mean
             
@@ -811,6 +813,20 @@ if main_menu == "📊 Makro Nasional (DFM)":
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
         
+        # === TOMBOL DOWNLOAD NOWCAST DIKEMBALIKAN ===
+        if not df_full_results.empty:
+            import io
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df_full_results.to_excel(writer, index=False, sheet_name='Nowcast Results')
+            st.download_button(
+                label="📥 Download Full Nowcast Results (Excel)",
+                data=buffer.getvalue(),
+                file_name="Replikasi_Final_MATLAB_Elaborated.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
+
         st.markdown("### 📈 Monitoring Data Harian")
         selected_daily_view = st.radio("Pilih Mode Tampilan Pasar:", ["Data Berjalan", "Data Rata-Rata"], horizontal=True, key="daily_view_toggle")
         
@@ -1420,9 +1436,12 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                             )
                             model = genai.GenerativeModel(model_name)
                             
-                            prompt = f"""
+                           prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Kementerian PPN/Bappenas. 
-Keluarkan narasi dengan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, terukur, namun tetap luwes dan tidak kaku.
+Keluarkan narasi dengan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, terukur, namun tetap luwes.
+
+ATURAN SANGAT PENTING:
+JANGAN gunakan kalimat pembuka atau penutup obrolan (seperti "Baik, berikut adalah laporannya", "Sebagai perencana ahli...", atau "Semoga laporan ini bermanfaat"). LANGSUNG berikan isi Executive Brief dari judul sampai selesai.
 
 =====================
 DATA & EVIDENCE MAKRO-EKSTERNAL
@@ -1438,10 +1457,10 @@ Dampak Skenario Eksternal: PDB {ext_gdp_drop:+.2f} pp, Defisit APBN {ext_def:+.2
 =====================
 STRUKTUR EXECUTIVE BRIEF:
 =====================
-Tuliskan Executive Brief tanpa menyebutkan frasa klise seperti "Berdasarkan data di atas". Susun dengan 3 bagian utama:
+Susun Executive Brief dengan 3 bagian utama:
 
 **1. POSISI STRATEGIS BAPPENAS**
-(Deklarasikan stance/pandangan Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal, serta urgensi menjaga resiliensi ekonomi daerah. Harus mencerminkan helikopter view Bappenas).
+(Deklarasikan stance Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal, serta urgensi menjaga resiliensi ekonomi daerah. Harus mencerminkan helicopter view).
 
 **2. SINTESIS KONDISI EKONOMI**
 (Buat narasi padat yang menghubungkan anomali makro domestik dengan potensi pukulan dari guncangan eksternal (Rupiah & Minyak). Jelaskan maknanya secara ekonomi politik tanpa mengulang-ulang angka mentah).
@@ -1479,7 +1498,7 @@ Tuliskan Executive Brief tanpa menyebutkan frasa klise seperti "Berdasarkan data
         if final_policy_text:
             st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
             st.markdown("#### 📑 Export Executive Brief")
-            st.caption("Unduh dalam format HTML yang sudah dioptimasi untuk Print PDF. **Cara Penggunaan:** Buka file HTML yang diunduh, otomatis akan muncul jendela *Print*. Pilih **Save as PDF** (Simpan sebagai PDF).")
+            st.caption("Unduh dalam format HTML yang elegan dan profesional untuk dilaporkan kepada pimpinan.")
             
             try:
                 import markdown
@@ -1494,40 +1513,133 @@ Tuliskan Executive Brief tanpa menyebutkan frasa klise seperti "Berdasarkan data
                 <html lang="id">
                 <head>
                     <meta charset="UTF-8">
-                    <title>Executive Brief Bappenas</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Executive Brief - Kementerian PPN/Bappenas</title>
                     <style>
-                        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
-                        body {{ font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #334155; line-height: 1.7; margin: 0; padding: 0; }}
-                        .page-container {{ max-width: 800px; margin: 40px auto; background: #ffffff; padding: 60px 70px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }}
-                        .header-print {{ border-bottom: 3px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; text-align: center; }}
-                        .header-print h1 {{ color: #0f172a; font-size: 28px; margin: 0 0 5px 0; }}
-                        .header-print p {{ color: #64748b; font-size: 14px; margin: 0; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }}
-                        .content h2, .content h3 {{ color: #1e3a8a; margin-top: 30px; }}
-                        .premium-list {{ padding-left: 20px; }}
-                        .premium-list li {{ margin-bottom: 12px; font-size: 15px; }}
-                        .highlight-text {{ color: #0f172a; font-weight: 700; }}
-                        @media print {{
-                            body {{ background-color: #ffffff; }}
-                            .page-container {{ box-shadow: none; margin: 0; padding: 20px; max-width: 100%; }}
+                        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+                        
+                        body {{ 
+                            font-family: 'Plus Jakarta Sans', sans-serif; 
+                            background-color: #f1f5f9; 
+                            color: #334155; 
+                            line-height: 1.8; 
+                            margin: 0; 
+                            padding: 40px 20px; 
+                        }}
+                        .document-wrapper {{ 
+                            max-width: 850px; 
+                            margin: 0 auto; 
+                            background: #ffffff; 
+                            border-radius: 12px; 
+                            box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
+                            overflow: hidden; 
+                        }}
+                        .header-banner {{ 
+                            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); 
+                            padding: 40px 50px; 
+                            text-align: center; 
+                            border-bottom: 5px solid #eab308; 
+                        }}
+                        .header-banner h1 {{ 
+                            color: #ffffff; 
+                            font-size: 32px; 
+                            margin: 0 0 10px 0; 
+                            letter-spacing: -0.5px; 
+                        }}
+                        .header-banner p {{ 
+                            color: #cbd5e1; 
+                            font-size: 15px; 
+                            margin: 0; 
+                            font-weight: 600; 
+                            text-transform: uppercase; 
+                            letter-spacing: 2px; 
+                        }}
+                        .content-area {{ 
+                            padding: 50px; 
+                        }}
+                        .content-area h1 {{
+                            font-size: 24px;
+                            color: #0f172a;
+                            border-bottom: 2px solid #e2e8f0;
+                            padding-bottom: 10px;
+                            margin-top: 0;
+                        }}
+                        .content-area h2 {{ 
+                            color: #1e3a8a; 
+                            font-size: 20px; 
+                            margin-top: 35px; 
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                        }}
+                        .content-area h2::before {{
+                            content: '';
+                            display: block;
+                            width: 6px;
+                            height: 24px;
+                            background-color: #eab308;
+                            border-radius: 4px;
+                        }}
+                        .content-area h3 {{ 
+                            color: #334155; 
+                            font-size: 17px; 
+                            margin-top: 25px; 
+                        }}
+                        .content-area p {{
+                            font-size: 15px;
+                            text-align: justify;
+                        }}
+                        .premium-list {{ 
+                            padding-left: 20px; 
+                        }}
+                        .premium-list li {{ 
+                            margin-bottom: 12px; 
+                            font-size: 15px; 
+                            padding-left: 5px;
+                        }}
+                        .premium-list li::marker {{
+                            color: #1e3a8a;
+                        }}
+                        .highlight-text {{ 
+                            color: #0f172a; 
+                            font-weight: 700; 
+                            background-color: #fef9c3;
+                            padding: 0 4px;
+                            border-radius: 4px;
+                        }}
+                        .footer-note {{
+                            text-align: center;
+                            padding: 30px;
+                            background-color: #f8fafc;
+                            color: #94a3b8;
+                            font-size: 13px;
+                            border-top: 1px solid #e2e8f0;
                         }}
                     </style>
-                    <script>
-                        window.onload = function() {{ window.print(); }}
-                    </script>
                 </head>
                 <body>
-                    <div class="page-container">
-                        <div class="header-print">
-                            <h1>Executive Brief: Sintesis Makro & Kebijakan Lintas Sektoral</h1>
-                            <p>Kementerian PPN / Bappenas RI</p>
+                    <div class="document-wrapper">
+                        <div class="header-banner">
+                            <h1>Executive Brief</h1>
+                            <p>Sintesis Makroekonomi & Kebijakan Lintas Sektoral</p>
                         </div>
-                        <div class="content">
+                        <div class="content-area">
                             {html_policy}
+                        </div>
+                        <div class="footer-note">
+                            Dihasilkan oleh Macro AI Command Center - Kementerian PPN/Bappenas RI<br>
+                            <em>Dokumen Internal Terbatas</em>
                         </div>
                     </div>
                 </body>
                 </html>
                 """
-                st.download_button(label="📥 Unduh Executive Summary (Siap Print PDF)", data=html_template, file_name="Sintesis_Kebijakan_Bappenas.html", mime="text/html", type="primary")
+                st.download_button(
+                    label="📥 Unduh Executive Summary (Format HTML Elegan)", 
+                    data=html_template, 
+                    file_name="Executive_Brief_Bappenas.html", 
+                    mime="text/html", 
+                    type="primary"
+                )
             except Exception as e:
                 st.warning(f"Gagal menyiapkan dokumen HTML. Error detail: {e}")
