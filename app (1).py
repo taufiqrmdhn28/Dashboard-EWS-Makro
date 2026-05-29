@@ -83,7 +83,7 @@ SCEN = {
         "pajak":      {2026: 2725.7,  2027: 2825.1,  2028: 4311.0,  2029: 5466.6},
         "pnbp":       {2026: 497.3,   2027: 506.6,   2028: 699.0,   2029: 813.6},
         "migas":      {2026: 114.0,   2027: 131.7,   2028: 167.8,   2029: 194.8},
-        "pdb":        {2026: 25788.9, 2027: 28211.7, 2028: 31283.1, 2029: 34938.3},
+        "pdb":        {2026: 25788.9, 2027: 28824.4, 2028: 31810.0, 2029: 34938.3},
     },
     "high": {
         "nt":         {2026: 16700, 2027: 16500, 2028: 16300, 2029: 16200},
@@ -129,7 +129,7 @@ EL = {
     "bop_svc_nt":      0.05,   "bop_prim_nt":     -0.03,
     "share_exp_migas": 0.06,   "share_imp_migas":  0.16,
     
-    # Transmisi GDP
+    # Transmisi GDP (PDB Turun saat Depresiasi/ICP Naik)
     "gexp_nt":         0.15,   "gimp_nt":         -0.10, 
     "cons_nt":        -0.10,   "inv_nt":          -0.06, 
     "gexp_oil":        0.025,  "gimp_oil":         0.018,
@@ -461,7 +461,7 @@ def run_full_dfm_replication():
 
 
 # ==========================================
-# 4. UI HEADER & SIDEBAR GLOBAL
+# 4. UI HEADER & MENU (DI ATAS)
 # ==========================================
 st.markdown("""
 <style>
@@ -490,7 +490,7 @@ st.markdown("""
     font-size: 13px; font-weight: 600; margin-bottom: 14px;
 }
 div[data-testid="metric-container"] > div { font-family: monospace; }
-/* Style Menu Atas Horizontal */
+/* TAMBAHAN UNTUK MENU ATAS HORIZONTAL */
 div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify-content: center; background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb;}
 </style>
 """, unsafe_allow_html=True)
@@ -512,75 +512,19 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-with st.sidebar:
-    st.markdown("### 🎛️ MENU UTAMA")
-    main_menu = st.radio(
-        "Pilih Modul Analisis:",
-        [
-            "📊 Makro Nasional (DFM)", 
-            "🌍 Sektor Eksternal & Fiskal", 
-            "📍 Ekonomi Daerah (WIP)", 
-            "🧠 AI Executive Brief (Synthesis)"
-        ],
-        index=0
-    )
-    
-    if main_menu == "🌍 Sektor Eksternal & Fiskal":
-        st.divider()
-        st.markdown("**BASELINE SKENARIO**")
-        scen = st.radio("Skenario", ["med", "high"], horizontal=True, format_func=lambda x: "Med" if x == "med" else "High")
-        st.markdown("**TAHUN PROYEKSI**")
-        yr = st.select_slider("Tahun", options=YEARS, value=2026)
-
-        D           = SCEN[scen]
-        nt_default  = D["nt"][yr]
-        icp_default = D["icp"][yr]
-
-        st.divider()
-        st.markdown("**PRESET SKENARIO CEPAT**")
-        preset = st.selectbox("Pilih preset", [
-            "-- pilih --", "📊 Base Med", "📈 Base High", "📉 Depresiasi (NT 19.500)",
-            "🛢 Minyak Rendah ($40)", "🔥 Minyak Tinggi ($100)", "⚡ Twin Shock (NT 20.000, ICP $100)",
-        ])
-
-        if   "Depresiasi" in preset: nt_init, oil_init = 19_500,       icp_default
-        elif "Rendah"     in preset: nt_init, oil_init = nt_default,  40
-        elif "Tinggi"     in preset: nt_init, oil_init = nt_default,  100
-        elif "Twin"       in preset: nt_init, oil_init = 20_000,      100
-        else:                        nt_init, oil_init = nt_default,  icp_default
-
-        st.divider()
-        st.markdown("**NILAI TUKAR (Rp/USD)**")
-        nt = st.number_input("NT", min_value=10_000, max_value=30_000, value=nt_init, step=50, label_visibility="collapsed")
-        st.caption(f"Baseline {scen.upper()} {yr}: Rp{nt_default:,} — nilai naik = depresiasi Rupiah")
-
-        st.markdown("**HARGA MINYAK ICP (USD/bbl)**")
-        oil = st.number_input("ICP", min_value=20, max_value=150, value=oil_init, step=1, label_visibility="collapsed")
-        st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
-
-        b_sim, s_sim = simulate_eksternal(nt, oil, yr, scen)
-        
-        st.session_state['ext_nt'] = nt
-        st.session_state['ext_oil'] = oil
-        st.session_state['ext_gdp_drop'] = s_sim["gdp"] - b_sim["gdp"]
-        st.session_state['ext_def'] = s_sim["defpdb"] - b_sim["defpdb"]
-
-        st.divider()
-        st.markdown(f"**DELTA VS BASELINE {yr}**")
-        delta_rows = [
-            ("Neraca Berjalan", s_sim["ca"]       - b_sim["ca"],       " Miliar USD"),
-            ("Cadangan Devisa", s_sim["reserves"] - b_sim["reserves"], " Miliar USD"),
-            ("PDB Growth",      s_sim["gdp"]      - b_sim["gdp"],      " pp"),
-            ("Ekspor Riil",     s_sim["gexp"]     - b_sim["gexp"],     " pp"),
-            ("Defisit APBN",    s_sim["def"]      - b_sim["def"],      " T"),
-            ("Defisit/PDB",     s_sim["defpdb"]   - b_sim["defpdb"],   " pp"),
-        ]
-        for lbl, dv, sfx in delta_rows:
-            sign  = "+" if dv >= 0 else ""
-            color = delta_color(dv)
-            st.markdown(f"**{lbl}**: :{color}[{sign}{dv:.2f}{sfx}]")
-        st.caption(f"Skenario: {scen.upper()} | NT Rp{nt:,} | ICP ${oil}")
-
+main_menu = st.radio(
+    "Pilih Modul Analisis:",
+    [
+        "📊 Makro Nasional (DFM)", 
+        "🌍 Sektor Eksternal & Fiskal", 
+        "📍 Ekonomi Daerah (WIP)", 
+        "🧠 AI Executive Brief (Synthesis)"
+    ],
+    index=0,
+    horizontal=True,
+    label_visibility="collapsed"
+)
+st.divider()
 
 # =========================================================================
 # MODUL 1: MAKRO NASIONAL (DFM)
@@ -1073,7 +1017,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
     nt = st.session_state.get('ext_nt', 16700)
     oil = st.session_state.get('ext_oil', 65)
     
-    scen = "med"
+    scen = "med" 
     
     keys = ["ca", "exp", "imp", "reserves", "gdp", "gexp", "gimp",
             "def", "rev", "bel", "sube", "bunga", "pajak"]
@@ -1377,15 +1321,10 @@ elif main_menu == "📍 Ekonomi Daerah (WIP)":
     st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")
 
 # =========================================================================
-# MODUL 4: AI EXECUTIVE BRIEF (SYNTHESIS K/L)
+# GLOBAL AI EXECUTIVE BRIEF (SKEMA 2)
 # =========================================================================
-elif main_menu == "🧠 AI Executive Brief (Synthesis)":
-    st.markdown("""
-    <style>
-    .glass-card { background: rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); padding: 24px; margin-bottom: 24px; }
-    </style>
-    """, unsafe_allow_html=True)
-    
+if st.session_state.get('show_ai_brief', False):
+    st.markdown("<br><hr style='border:2px solid #2563eb;'>", unsafe_allow_html=True)
     st.markdown("### 🧠 AI Policy Synthesis & Executive Brief")
     st.markdown("Modul ini mensintesis data dari seluruh *dashboard* untuk memproduksi rumusan kebijakan lintas sektoral secara makro dan mikro komprehensif.")
 
@@ -1394,9 +1333,14 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
     if 'ext_nt' not in st.session_state: missing_data.append("Sektor Eksternal")
 
     if missing_data:
-        st.warning(f"⚠️ **Data Belum Lengkap!** Silakan buka tab **{', '.join(missing_data)}** terlebih dahulu agar sistem AI dapat merekam data terbaru sebelum melakukan *generate*.")
+        st.warning(f"⚠️ **Data Belum Lengkap!** Silakan buka/klik tab **{', '.join(missing_data)}** minimal satu kali agar sistem AI dapat merekam data terbaru sebelum melakukan *generate*.")
     else:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("""
+        <style>
+        .glass-card-ai { background: rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); padding: 24px; margin-bottom: 24px; }
+        </style>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="glass-card-ai">', unsafe_allow_html=True)
         
         mac_view = st.session_state.get('mac_view', '2026')
         mac_avg = st.session_state.get('mac_avg', 0)
@@ -1420,9 +1364,9 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
             st.success("✅ Draf Sintesis Lintas Sektor tersedia. Silakan tinjau dan edit di bawah.")
 
         if signature not in st.session_state.policy_cache:
-            if st.button("Generate Sintesis Kebijakan (AI Bappenas)"):
+            if st.button("Generate Sintesis Kebijakan (AI Bappenas)", type="primary"):
                 genai.configure(api_key=USER_API_KEY)
-                with st.spinner('AI sedang merumuskan arahan strategis The Bappenas Way...'):
+                with st.spinner('AI sedang merumuskan arahan strategis The Bappenas Way. Proses ini membutuhkan waktu sekitar 15-30 detik...'):
                     try:
                         avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                         model_name = next((m for m in avail if 'flash' in m), avail[0] if avail else None)
