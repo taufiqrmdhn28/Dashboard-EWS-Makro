@@ -1436,7 +1436,7 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                             )
                             model = genai.GenerativeModel(model_name)
                             
-                           prompt = f"""
+                            prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Kementerian PPN/Bappenas. 
 Keluarkan narasi dengan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, terukur, namun tetap luwes.
 
