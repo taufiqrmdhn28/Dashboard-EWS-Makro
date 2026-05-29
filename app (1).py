@@ -1444,24 +1444,13 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                             generation_config = genai.types.GenerationConfig(
                                 temperature=0.7, 
                                 top_p=0.9,
-                                max_output_tokens=8192
+                                max_output_tokens=2048
                             )
-                            safety_settings = [
-                                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-                            ]
                             model = genai.GenerativeModel(model_name)
                             
                             prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Kementerian PPN/Bappenas. 
-Tugas Anda adalah menulis Executive Brief untuk dilaporkan kepada Menteri.
-
-ATURAN MUTLAK DAN SANGAT PENTING:
-1. JANGAN PERNAH memberikan kalimat pembuka percakapan seperti "Baik, berikut adalah draf...", "Sebagai Ahli Utama...", atau "Ini adalah hasilnya".
-2. LANGSUNG mulai teks Anda dengan Judul (Halaman).
-3. Gunakan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, dan tegas.
+Keluarkan narasi dengan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, terukur, namun tetap luwes dan tidak kaku.
 
 =====================
 DATA & EVIDENCE MAKRO-EKSTERNAL
@@ -1477,37 +1466,27 @@ Dampak Skenario Eksternal: PDB {ext_gdp_drop:+.2f} pp, Defisit APBN {ext_def:+.2
 =====================
 STRUKTUR EXECUTIVE BRIEF:
 =====================
-### [JUDUL EXECUTIVE BRIEF YANG TEGAS]
+Tuliskan Executive Brief tanpa menyebutkan frasa klise seperti "Berdasarkan data di atas". Susun dengan 3 bagian utama:
 
 **1. POSISI STRATEGIS BAPPENAS**
-(Deklarasikan stance Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal. Harus mencerminkan helicopter view).
+(Deklarasikan stance/pandangan Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal, serta urgensi menjaga resiliensi ekonomi daerah. Harus mencerminkan helikopter view Bappenas).
 
 **2. SINTESIS KONDISI EKONOMI**
 (Buat narasi padat yang menghubungkan anomali makro domestik dengan potensi pukulan dari guncangan eksternal (Rupiah & Minyak). Jelaskan maknanya secara ekonomi politik tanpa mengulang-ulang angka mentah).
 
 **3. ARAHAN KEBIJAKAN STRATEGIS LINTAS K/L**
-(Berikan rekomendasi kebijakan agregat untuk diorkestrasikan kepada seluruh Kementerian/Lembaga terkait, bagi menjadi 2 aspek utama):
+(Berikan rekomendasi kebijakan agregat untuk diorkestrasikan kepada seluruh Kementerian/Lembaga terkait, TANPA menyebutkan nama K/L secara spesifik. Bagi menjadi 2 aspek utama):
 * **Aspek Makro:** (Fokus pada orkestrasi bauran kebijakan fiskal-moneter, penjagaan target pertumbuhan, manajemen defisit, dan stabilitas nilai tukar secara agregat).
-* **Aspek Mikro & Kewilayahan:** (Fokus pada intervensi sektoral, rantai pasok industri, tata niaga, pengendalian inflasi di daerah, dan proteksi daya beli masyarakat).
+* **Aspek Mikro & Kewilayahan:** (Fokus pada intervensi sektoral, rantai pasok industri, tata niaga, pengendalian inflasi di tingkat tapak/daerah, dan proteksi daya beli masyarakat).
 """
                             res = model.generate_content(
                                 prompt, 
                                 generation_config=generation_config,
-                                safety_settings=safety_settings,
                                 request_options={"timeout": 600}
                             )
-                            
-                            # Membersihkan kalau AI masih bandel kasih kalimat sapaan bot
-                            out_text = res.text
-                            if "Baik," in out_text or "Berikut" in out_text or "Sebagai" in out_text:
-                                if "###" in out_text:
-                                    out_text = out_text[out_text.find("###"):]
-                                elif "**1." in out_text:
-                                    out_text = out_text[out_text.find("**1."):]
-                            
-                            st.session_state.policy_cache[signature] = out_text
+                            st.session_state.policy_cache[signature] = res.text
                             with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
-                            st.session_state[editor_key] = out_text
+                            st.session_state[editor_key] = res.text
                             st.success("Sintesis Selesai!")
                             st.rerun()
 
@@ -1528,9 +1507,9 @@ STRUKTUR EXECUTIVE BRIEF:
         if final_policy_text:
             st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
             st.markdown("#### 📑 Export Executive Brief")
-            st.caption("Unduh dalam format HTML yang elegan dan profesional untuk dilaporkan kepada pimpinan.")
+            st.caption("Unduh dalam format HTML yang sudah dioptimasi untuk Print PDF. **Cara Penggunaan:** Buka file HTML yang diunduh, otomatis akan muncul jendela *Print*. Pilih **Save as PDF** (Simpan sebagai PDF).")
             
-            try:
+           try:
                 import markdown
                 
                 html_policy = markdown.markdown(final_policy_text)
