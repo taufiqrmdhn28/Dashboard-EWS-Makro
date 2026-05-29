@@ -83,7 +83,7 @@ SCEN = {
         "pajak":      {2026: 2725.7,  2027: 2825.1,  2028: 4311.0,  2029: 5466.6},
         "pnbp":       {2026: 497.3,   2027: 506.6,   2028: 699.0,   2029: 813.6},
         "migas":      {2026: 114.0,   2027: 131.7,   2028: 167.8,   2029: 194.8},
-        "pdb":        {2026: 25788.9, 2027: 28824.4, 2028: 31810.0, 2029: 34938.3},
+        "pdb":        {2026: 25788.9, 2027: 28211.7, 2028: 31283.1, 2029: 34938.3},
     },
     "high": {
         "nt":         {2026: 16700, 2027: 16500, 2028: 16300, 2029: 16200},
@@ -129,7 +129,7 @@ EL = {
     "bop_svc_nt":      0.05,   "bop_prim_nt":     -0.03,
     "share_exp_migas": 0.06,   "share_imp_migas":  0.16,
     
-    # Transmisi GDP (PDB Turun saat Depresiasi/ICP Naik)
+    # Transmisi GDP
     "gexp_nt":         0.15,   "gimp_nt":         -0.10, 
     "cons_nt":        -0.10,   "inv_nt":          -0.06, 
     "gexp_oil":        0.025,  "gimp_oil":         0.018,
@@ -403,8 +403,7 @@ def run_full_dfm_replication():
         data_full.index = pd.to_datetime(data_full.index)
         data_full_resampled = data_full.resample('MS').first() 
         target_var = 'RGDP_growth'
-        
-        # --- PENYESUAIAN HYPERPARAMETER DFM (Sesuai MATLAB P.r=2, P.p=2) ---
+
         def get_actual_value(ref_period):
             target_date = ref_period.to_timestamp(how='end').replace(day=1).normalize()
             if target_date in data_full.index:
@@ -438,8 +437,7 @@ def run_full_dfm_replication():
             else:
                 end_q = data_full_resampled.loc[data_full_resampled.index <= obs_cutoff, [target_var]].resample(q_freq).last()
             
-            # --- Perbaikan Parameter (factors=2, factor_orders=2) ---
-            model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, factors=2, factor_orders=2, idiosyncratic_ar=1, standardize=True)
+            model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, k_factors=1, factor_orders=1, idiosyncratic_ar=1, standardize=True)
             res = model.fit(method='em', maxiter=500, tolerance=1e-5, disp=False)
             means = res.get_prediction(end=res.model.nobs + 24).predicted_mean
             
@@ -461,7 +459,7 @@ def run_full_dfm_replication():
 
 
 # ==========================================
-# 4. UI HEADER & MENU (DI ATAS)
+# 4. UI HEADER & SIDEBAR GLOBAL
 # ==========================================
 st.markdown("""
 <style>
@@ -490,7 +488,7 @@ st.markdown("""
     font-size: 13px; font-weight: 600; margin-bottom: 14px;
 }
 div[data-testid="metric-container"] > div { font-family: monospace; }
-/* TAMBAHAN UNTUK MENU ATAS HORIZONTAL */
+/* Style Menu Atas Horizontal */
 div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify-content: center; background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb;}
 </style>
 """, unsafe_allow_html=True)
@@ -512,19 +510,75 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-main_menu = st.radio(
-    "Pilih Modul Analisis:",
-    [
-        "📊 Makro Nasional (DFM)", 
-        "🌍 Sektor Eksternal & Fiskal", 
-        "📍 Ekonomi Daerah (WIP)", 
-        "🧠 AI Executive Brief (Synthesis)"
-    ],
-    index=0,
-    horizontal=True,
-    label_visibility="collapsed"
-)
-st.divider()
+with st.sidebar:
+    st.markdown("### 🎛️ MENU UTAMA")
+    main_menu = st.radio(
+        "Pilih Modul Analisis:",
+        [
+            "📊 Makro Nasional (DFM)", 
+            "🌍 Sektor Eksternal & Fiskal", 
+            "📍 Ekonomi Daerah (WIP)", 
+            "🧠 AI Executive Brief (Synthesis)"
+        ],
+        index=0
+    )
+    
+    if main_menu == "🌍 Sektor Eksternal & Fiskal":
+        st.divider()
+        st.markdown("**BASELINE SKENARIO**")
+        scen = st.radio("Skenario", ["med", "high"], horizontal=True, format_func=lambda x: "Med" if x == "med" else "High")
+        st.markdown("**TAHUN PROYEKSI**")
+        yr = st.select_slider("Tahun", options=YEARS, value=2026)
+
+        D           = SCEN[scen]
+        nt_default  = D["nt"][yr]
+        icp_default = D["icp"][yr]
+
+        st.divider()
+        st.markdown("**PRESET SKENARIO CEPAT**")
+        preset = st.selectbox("Pilih preset", [
+            "-- pilih --", "📊 Base Med", "📈 Base High", "📉 Depresiasi (NT 19.500)",
+            "🛢 Minyak Rendah ($40)", "🔥 Minyak Tinggi ($100)", "⚡ Twin Shock (NT 20.000, ICP $100)",
+        ])
+
+        if   "Depresiasi" in preset: nt_init, oil_init = 19_500,       icp_default
+        elif "Rendah"     in preset: nt_init, oil_init = nt_default,  40
+        elif "Tinggi"     in preset: nt_init, oil_init = nt_default,  100
+        elif "Twin"       in preset: nt_init, oil_init = 20_000,      100
+        else:                        nt_init, oil_init = nt_default,  icp_default
+
+        st.divider()
+        st.markdown("**NILAI TUKAR (Rp/USD)**")
+        nt = st.number_input("NT", min_value=10_000, max_value=30_000, value=nt_init, step=50, label_visibility="collapsed")
+        st.caption(f"Baseline {scen.upper()} {yr}: Rp{nt_default:,} — nilai naik = depresiasi Rupiah")
+
+        st.markdown("**HARGA MINYAK ICP (USD/bbl)**")
+        oil = st.number_input("ICP", min_value=20, max_value=150, value=oil_init, step=1, label_visibility="collapsed")
+        st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
+
+        b_sim, s_sim = simulate_eksternal(nt, oil, yr, scen)
+        
+        st.session_state['ext_nt'] = nt
+        st.session_state['ext_oil'] = oil
+        st.session_state['ext_gdp_drop'] = s_sim["gdp"] - b_sim["gdp"]
+        st.session_state['ext_def'] = s_sim["defpdb"] - b_sim["defpdb"]
+
+        st.divider()
+        st.markdown(f"**DELTA VS BASELINE {yr}**")
+        delta_rows = [
+            ("Neraca Berjalan", s_sim["ca"]       - b_sim["ca"],       " Miliar USD"),
+            ("Cadangan Devisa", s_sim["reserves"] - b_sim["reserves"], " Miliar USD"),
+            ("PDB Growth",      s_sim["gdp"]      - b_sim["gdp"],      " pp"),
+            ("Ekspor Riil",     s_sim["gexp"]     - b_sim["gexp"],     " pp"),
+            ("Defisit APBN",    s_sim["def"]      - b_sim["def"],      " T"),
+            ("Defisit/PDB",     s_sim["defpdb"]   - b_sim["defpdb"],   " pp"),
+        ]
+        for lbl, dv, sfx in delta_rows:
+            sign  = "+" if dv >= 0 else ""
+            color = delta_color(dv)
+            st.markdown(f"**{lbl}**: :{color}[{sign}{dv:.2f}{sfx}]")
+        st.caption(f"Skenario: {scen.upper()} | NT Rp{nt:,} | ICP ${oil}")
+
 
 # =========================================================================
 # MODUL 1: MAKRO NASIONAL (DFM)
@@ -757,20 +811,6 @@ if main_menu == "📊 Makro Nasional (DFM)":
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
         
-        # === TOMBOL DOWNLOAD NOWCAST DIKEMBALIKAN ===
-        if not df_full_results.empty:
-            import io
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df_full_results.to_excel(writer, index=False, sheet_name='Nowcast Results')
-            st.download_button(
-                label="📥 Download Full Nowcast Results (Excel)",
-                data=buffer.getvalue(),
-                file_name="Replikasi_Final_MATLAB_Elaborated.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
-
         st.markdown("### 📈 Monitoring Data Harian")
         selected_daily_view = st.radio("Pilih Mode Tampilan Pasar:", ["Data Berjalan", "Data Rata-Rata"], horizontal=True, key="daily_view_toggle")
         
@@ -1017,7 +1057,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
     nt = st.session_state.get('ext_nt', 16700)
     oil = st.session_state.get('ext_oil', 65)
     
-    scen = "med" 
+    scen = "med"
     
     keys = ["ca", "exp", "imp", "reserves", "gdp", "gexp", "gimp",
             "def", "rev", "bel", "sube", "bunga", "pajak"]
@@ -1321,10 +1361,15 @@ elif main_menu == "📍 Ekonomi Daerah (WIP)":
     st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")
 
 # =========================================================================
-# GLOBAL AI EXECUTIVE BRIEF (SKEMA 2)
+# MODUL 4: AI EXECUTIVE BRIEF (SYNTHESIS K/L)
 # =========================================================================
-if st.session_state.get('show_ai_brief', False):
-    st.markdown("<br><hr style='border:2px solid #2563eb;'>", unsafe_allow_html=True)
+elif main_menu == "🧠 AI Executive Brief (Synthesis)":
+    st.markdown("""
+    <style>
+    .glass-card { background: rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); padding: 24px; margin-bottom: 24px; }
+    </style>
+    """, unsafe_allow_html=True)
+    
     st.markdown("### 🧠 AI Policy Synthesis & Executive Brief")
     st.markdown("Modul ini mensintesis data dari seluruh *dashboard* untuk memproduksi rumusan kebijakan lintas sektoral secara makro dan mikro komprehensif.")
 
@@ -1333,14 +1378,9 @@ if st.session_state.get('show_ai_brief', False):
     if 'ext_nt' not in st.session_state: missing_data.append("Sektor Eksternal")
 
     if missing_data:
-        st.warning(f"⚠️ **Data Belum Lengkap!** Silakan buka/klik tab **{', '.join(missing_data)}** minimal satu kali agar sistem AI dapat merekam data terbaru sebelum melakukan *generate*.")
+        st.warning(f"⚠️ **Data Belum Lengkap!** Silakan buka tab **{', '.join(missing_data)}** terlebih dahulu agar sistem AI dapat merekam data terbaru sebelum melakukan *generate*.")
     else:
-        st.markdown("""
-        <style>
-        .glass-card-ai { background: rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); padding: 24px; margin-bottom: 24px; }
-        </style>
-        """, unsafe_allow_html=True)
-        st.markdown('<div class="glass-card-ai">', unsafe_allow_html=True)
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         
         mac_view = st.session_state.get('mac_view', '2026')
         mac_avg = st.session_state.get('mac_avg', 0)
@@ -1364,9 +1404,9 @@ if st.session_state.get('show_ai_brief', False):
             st.success("✅ Draf Sintesis Lintas Sektor tersedia. Silakan tinjau dan edit di bawah.")
 
         if signature not in st.session_state.policy_cache:
-            if st.button("Generate Sintesis Kebijakan (AI Bappenas)", type="primary"):
+            if st.button("Generate Sintesis Kebijakan (AI Bappenas)"):
                 genai.configure(api_key=USER_API_KEY)
-                with st.spinner('AI sedang merumuskan arahan strategis The Bappenas Way. Proses ini membutuhkan waktu sekitar 15-30 detik...'):
+                with st.spinner('AI sedang merumuskan arahan strategis The Bappenas Way...'):
                     try:
                         avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                         model_name = next((m for m in avail if 'flash' in m), avail[0] if avail else None)
@@ -1382,10 +1422,7 @@ if st.session_state.get('show_ai_brief', False):
                             
                             prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Kementerian PPN/Bappenas. 
-Keluarkan narasi dengan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, terukur, namun tetap luwes.
-
-ATURAN SANGAT PENTING:
-JANGAN gunakan kalimat pembuka atau penutup obrolan (seperti "Baik, berikut adalah laporannya", "Sebagai perencana ahli...", atau "Semoga laporan ini bermanfaat"). LANGSUNG berikan isi Executive Brief dari judul sampai selesai.
+Keluarkan narasi dengan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, terukur, namun tetap luwes dan tidak kaku.
 
 =====================
 DATA & EVIDENCE MAKRO-EKSTERNAL
@@ -1401,10 +1438,10 @@ Dampak Skenario Eksternal: PDB {ext_gdp_drop:+.2f} pp, Defisit APBN {ext_def:+.2
 =====================
 STRUKTUR EXECUTIVE BRIEF:
 =====================
-Susun Executive Brief dengan 3 bagian utama:
+Tuliskan Executive Brief tanpa menyebutkan frasa klise seperti "Berdasarkan data di atas". Susun dengan 3 bagian utama:
 
 **1. POSISI STRATEGIS BAPPENAS**
-(Deklarasikan stance Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal, serta urgensi menjaga resiliensi ekonomi daerah. Harus mencerminkan helicopter view).
+(Deklarasikan stance/pandangan Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal, serta urgensi menjaga resiliensi ekonomi daerah. Harus mencerminkan helikopter view Bappenas).
 
 **2. SINTESIS KONDISI EKONOMI**
 (Buat narasi padat yang menghubungkan anomali makro domestik dengan potensi pukulan dari guncangan eksternal (Rupiah & Minyak). Jelaskan maknanya secara ekonomi politik tanpa mengulang-ulang angka mentah).
@@ -1442,7 +1479,7 @@ Susun Executive Brief dengan 3 bagian utama:
         if final_policy_text:
             st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
             st.markdown("#### 📑 Export Executive Brief")
-            st.caption("Unduh dalam format HTML yang elegan dan profesional untuk dilaporkan kepada pimpinan.")
+            st.caption("Unduh dalam format HTML yang sudah dioptimasi untuk Print PDF. **Cara Penggunaan:** Buka file HTML yang diunduh, otomatis akan muncul jendela *Print*. Pilih **Save as PDF** (Simpan sebagai PDF).")
             
             try:
                 import markdown
@@ -1457,133 +1494,40 @@ Susun Executive Brief dengan 3 bagian utama:
                 <html lang="id">
                 <head>
                     <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Executive Brief - Kementerian PPN/Bappenas</title>
+                    <title>Executive Brief Bappenas</title>
                     <style>
-                        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-                        
-                        body {{ 
-                            font-family: 'Plus Jakarta Sans', sans-serif; 
-                            background-color: #f1f5f9; 
-                            color: #334155; 
-                            line-height: 1.8; 
-                            margin: 0; 
-                            padding: 40px 20px; 
-                        }}
-                        .document-wrapper {{ 
-                            max-width: 850px; 
-                            margin: 0 auto; 
-                            background: #ffffff; 
-                            border-radius: 12px; 
-                            box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
-                            overflow: hidden; 
-                        }}
-                        .header-banner {{ 
-                            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); 
-                            padding: 40px 50px; 
-                            text-align: center; 
-                            border-bottom: 5px solid #eab308; 
-                        }}
-                        .header-banner h1 {{ 
-                            color: #ffffff; 
-                            font-size: 32px; 
-                            margin: 0 0 10px 0; 
-                            letter-spacing: -0.5px; 
-                        }}
-                        .header-banner p {{ 
-                            color: #cbd5e1; 
-                            font-size: 15px; 
-                            margin: 0; 
-                            font-weight: 600; 
-                            text-transform: uppercase; 
-                            letter-spacing: 2px; 
-                        }}
-                        .content-area {{ 
-                            padding: 50px; 
-                        }}
-                        .content-area h1 {{
-                            font-size: 24px;
-                            color: #0f172a;
-                            border-bottom: 2px solid #e2e8f0;
-                            padding-bottom: 10px;
-                            margin-top: 0;
-                        }}
-                        .content-area h2 {{ 
-                            color: #1e3a8a; 
-                            font-size: 20px; 
-                            margin-top: 35px; 
-                            display: flex;
-                            align-items: center;
-                            gap: 10px;
-                        }}
-                        .content-area h2::before {{
-                            content: '';
-                            display: block;
-                            width: 6px;
-                            height: 24px;
-                            background-color: #eab308;
-                            border-radius: 4px;
-                        }}
-                        .content-area h3 {{ 
-                            color: #334155; 
-                            font-size: 17px; 
-                            margin-top: 25px; 
-                        }}
-                        .content-area p {{
-                            font-size: 15px;
-                            text-align: justify;
-                        }}
-                        .premium-list {{ 
-                            padding-left: 20px; 
-                        }}
-                        .premium-list li {{ 
-                            margin-bottom: 12px; 
-                            font-size: 15px; 
-                            padding-left: 5px;
-                        }}
-                        .premium-list li::marker {{
-                            color: #1e3a8a;
-                        }}
-                        .highlight-text {{ 
-                            color: #0f172a; 
-                            font-weight: 700; 
-                            background-color: #fef9c3;
-                            padding: 0 4px;
-                            border-radius: 4px;
-                        }}
-                        .footer-note {{
-                            text-align: center;
-                            padding: 30px;
-                            background-color: #f8fafc;
-                            color: #94a3b8;
-                            font-size: 13px;
-                            border-top: 1px solid #e2e8f0;
+                        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
+                        body {{ font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #334155; line-height: 1.7; margin: 0; padding: 0; }}
+                        .page-container {{ max-width: 800px; margin: 40px auto; background: #ffffff; padding: 60px 70px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }}
+                        .header-print {{ border-bottom: 3px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; text-align: center; }}
+                        .header-print h1 {{ color: #0f172a; font-size: 28px; margin: 0 0 5px 0; }}
+                        .header-print p {{ color: #64748b; font-size: 14px; margin: 0; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }}
+                        .content h2, .content h3 {{ color: #1e3a8a; margin-top: 30px; }}
+                        .premium-list {{ padding-left: 20px; }}
+                        .premium-list li {{ margin-bottom: 12px; font-size: 15px; }}
+                        .highlight-text {{ color: #0f172a; font-weight: 700; }}
+                        @media print {{
+                            body {{ background-color: #ffffff; }}
+                            .page-container {{ box-shadow: none; margin: 0; padding: 20px; max-width: 100%; }}
                         }}
                     </style>
+                    <script>
+                        window.onload = function() {{ window.print(); }}
+                    </script>
                 </head>
                 <body>
-                    <div class="document-wrapper">
-                        <div class="header-banner">
-                            <h1>Executive Brief</h1>
-                            <p>Sintesis Makroekonomi & Kebijakan Lintas Sektoral</p>
+                    <div class="page-container">
+                        <div class="header-print">
+                            <h1>Executive Brief: Sintesis Makro & Kebijakan Lintas Sektoral</h1>
+                            <p>Kementerian PPN / Bappenas RI</p>
                         </div>
-                        <div class="content-area">
+                        <div class="content">
                             {html_policy}
-                        </div>
-                        <div class="footer-note">
-                            Dihasilkan oleh Macro AI Command Center - Kementerian PPN/Bappenas RI<br>
-                            <em>Dokumen Internal Terbatas</em>
                         </div>
                     </div>
                 </body>
                 </html>
                 """
-                st.download_button(
-                    label="📥 Unduh Executive Summary (Format HTML Elegan)", 
-                    data=html_template, 
-                    file_name="Executive_Brief_Bappenas.html", 
-                    mime="text/html", 
-                    type="primary"
-                )
+                st.download_button(label="📥 Unduh Executive Summary (Siap Print PDF)", data=html_template, file_name="Sintesis_Kebijakan_Bappenas.html", mime="text/html", type="primary")
             except Exception as e:
                 st.warning(f"Gagal menyiapkan dokumen HTML. Error detail: {e}")
