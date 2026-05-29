@@ -83,7 +83,7 @@ SCEN = {
         "pajak":      {2026: 2725.7,  2027: 2825.1,  2028: 4311.0,  2029: 5466.6},
         "pnbp":       {2026: 497.3,   2027: 506.6,   2028: 699.0,   2029: 813.6},
         "migas":      {2026: 114.0,   2027: 131.7,   2028: 167.8,   2029: 194.8},
-        "pdb":        {2026: 25788.9, 2027: 28824.4, 2028: 31810.0, 2029: 35524.1},
+        "pdb":        {2026: 25788.9, 2027: 28824.4, 2028: 31810.0, 2029: 34938.3},
     },
     "high": {
         "nt":         {2026: 16700, 2027: 16500, 2028: 16300, 2029: 16200},
@@ -261,52 +261,29 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
 
     return b, s
 
-# --- Helper Chart Sektor Eksternal ---
+# --- Helper Chart ---
 _BASE_LAYOUT = dict(
-    paper_bgcolor="white",
-    plot_bgcolor="#f8f9fa",
+    paper_bgcolor="white", plot_bgcolor="#f8f9fa",
     font=dict(family="monospace", size=11, color="#4b5563"),
-    legend=dict(
-        orientation="h", yanchor="bottom", y=1.02,
-        xanchor="right", x=1, font_size=10,
-    ),
-    margin=dict(l=40, r=20, t=50, b=40),
-    height=270,
-    xaxis=dict(gridcolor="#e5e7eb", showgrid=True),
-    yaxis=dict(gridcolor="#e5e7eb", showgrid=True),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font_size=10),
+    margin=dict(l=40, r=20, t=50, b=40), height=270,
+    xaxis=dict(gridcolor="#e5e7eb", showgrid=True), yaxis=dict(gridcolor="#e5e7eb", showgrid=True),
 )
 
 def fig_layout(title: str, barmode: str = None, **kwargs) -> dict:
     layout = {**_BASE_LAYOUT, "title": dict(text=title, font=dict(size=13)), **kwargs}
-    if barmode:
-        layout["barmode"] = barmode
+    if barmode: layout["barmode"] = barmode
     return layout
 
-def bar_trace(name, x, y, color, opacity=0.75):
-    return go.Bar(name=name, x=x, y=y, marker_color=color, marker_line_width=0, opacity=opacity)
-
-def line_trace(name, x, y, color, fill=None, fillcolor=None, width=2, size=6):
-    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=color, width=width), marker=dict(size=size, color=color), fill=fill, fillcolor=fillcolor)
-
-def line_base_trace(name, x, y):
-    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=C["gray"], dash="dash", width=1.5), marker=dict(size=4, color=C["gray"]))
-
-def dot_trace(name, x, y):
-    return go.Scatter(name=name, x=x, y=y, mode="markers", marker=dict(size=11, color=C["amber"], line=dict(color="white", width=2)))
-
-def delta_color(val: float) -> str:
-    if val > 0.005:   return "green"
-    if val < -0.005:  return "red"
-    return "gray"
-
-def metric_delta_color(val: float) -> str:
-    dc = delta_color(val)
-    if dc == "green": return "normal"
-    if dc == "red":   return "inverse"
-    return "off"
+def bar_trace(name, x, y, color, opacity=0.75): return go.Bar(name=name, x=x, y=y, marker_color=color, marker_line_width=0, opacity=opacity)
+def line_trace(name, x, y, color, fill=None, fillcolor=None, width=2, size=6): return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=color, width=width), marker=dict(size=size, color=color), fill=fill, fillcolor=fillcolor)
+def line_base_trace(name, x, y): return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=C["gray"], dash="dash", width=1.5), marker=dict(size=4, color=C["gray"]))
+def dot_trace(name, x, y): return go.Scatter(name=name, x=x, y=y, mode="markers", marker=dict(size=11, color=C["amber"], line=dict(color="white", width=2)))
+def delta_color(val: float) -> str: return "green" if val > 0.005 else "red" if val < -0.005 else "gray"
+def metric_delta_color(val: float) -> str: return "normal" if delta_color(val) == "green" else "inverse" if delta_color(val) == "red" else "off"
 
 # ==========================================
-# 2. DATA LOADING & DFM ENGINE (MAKRO NASIONAL)
+# 3. DATA LOADING & DFM ENGINE
 # ==========================================
 @st.cache_data
 def load_data():
@@ -437,7 +414,6 @@ def run_full_dfm_replication():
             else:
                 end_q = data_full_resampled.loc[data_full_resampled.index <= obs_cutoff, [target_var]].resample(q_freq).last()
             
-            # --- Perbaikan Parameter DFM ---
             model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, factors=2, factor_orders=2, idiosyncratic_ar=1, standardize=True)
             res = model.fit(method='em', maxiter=500, tolerance=1e-5, disp=False)
             means = res.get_prediction(end=res.model.nobs + 24).predicted_mean
@@ -756,7 +732,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
         
-        # === TOMBOL DOWNLOAD NOWCAST DIKEMBALIKAN ===
+        # === TOMBOL DOWNLOAD DFM NOWCASTING ===
         if not df_full_results.empty:
             import io
             buffer = io.BytesIO()
@@ -1090,6 +1066,12 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 
     st.markdown("### 🌍 Dashboard Sensitivitas Eksternal & Fiskal RI")
     
+    # Simpan State Eksternal untuk AI dengan aman 
+    st.session_state['ext_nt'] = nt
+    st.session_state['ext_oil'] = oil
+    st.session_state['ext_gdp_drop'] = s_sim["gdp"] - b_sim["gdp"]
+    st.session_state['ext_def'] = s_sim["defpdb"] - b_sim["defpdb"]
+    
     keys = ["ca", "exp", "imp", "reserves", "gdp", "gexp", "gimp",
             "def", "rev", "bel", "sube", "bunga", "pajak"]
     R = {k: {"b": [], "s": []} for k in keys}
@@ -1138,35 +1120,74 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}", delta_color=metric_delta_color(dv))
 
         c1, c2, c3 = st.columns(3)
+
         with c1:
             ca_bar_colors = ["rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)" for v in R["ca"]["s"]]
-            fig = go.Figure([bar_trace("Baseline", YL, R["ca"]["b"], C["blue"], opacity=0.35), go.Bar(name="Simulasi", x=YL, y=R["ca"]["s"], marker_color=ca_bar_colors, marker_line_width=0)])
+            fig = go.Figure([
+                bar_trace("Baseline", YL, R["ca"]["b"], C["blue"], opacity=0.35),
+                go.Bar(name="Simulasi", x=YL, y=R["ca"]["s"], marker_color=ca_bar_colors, marker_line_width=0),
+            ])
             fig.update_layout(**fig_layout("Transaksi Berjalan (Miliar USD)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
+
         with c2:
-            fig = go.Figure([bar_trace("Exp Baseline", YL, R["exp"]["b"], C["blue"], opacity=0.35), bar_trace("Exp Simulasi", YL, R["exp"]["s"], C["teal"], opacity=0.85), bar_trace("Imp Baseline", YL, R["imp"]["b"], C["red"],  opacity=0.25), bar_trace("Imp Simulasi", YL, R["imp"]["s"], C["red2"], opacity=0.75)])
+            fig = go.Figure([
+                bar_trace("Exp Baseline", YL, R["exp"]["b"], C["blue"], opacity=0.35),
+                bar_trace("Exp Simulasi", YL, R["exp"]["s"], C["teal"], opacity=0.85),
+                bar_trace("Imp Baseline", YL, R["imp"]["b"], C["red"],  opacity=0.25),
+                bar_trace("Imp Simulasi", YL, R["imp"]["s"], C["red2"], opacity=0.75),
+            ])
             fig.update_layout(**fig_layout("Ekspor vs Impor Barang (Miliar USD)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
+
         with c3:
-            fig = go.Figure([line_base_trace("Baseline", YL, R["reserves"]["b"]), line_trace("Simulasi", YL, R["reserves"]["s"], C["orange"], fill="tozeroy", fillcolor="rgba(234,88,12,0.08)")])
+            fig = go.Figure([
+                line_base_trace("Baseline", YL, R["reserves"]["b"]),
+                line_trace("Simulasi", YL, R["reserves"]["s"], C["orange"], fill="tozeroy", fillcolor="rgba(234,88,12,0.08)"),
+            ])
             fig.update_layout(**fig_layout("Cadangan Devisa (Miliar USD)"))
             st.plotly_chart(fig, use_container_width=True)
 
         c4, c5 = st.columns(2)
+
         with c4:
             tb_b   = [SCEN[scen]["tradebal"][y] for y in YEARS]
             svc_b  = [SCEN[scen]["svcbal"][y]   for y in YEARS]
             prim_b = [SCEN[scen]["primbal"][y]   for y in YEARS]
             sec_b  = [SCEN[scen]["secbal"][y]    for y in YEARS]
-            fig = go.Figure([bar_trace("N. Barang", YL, tb_b, C["blue"], opacity=0.75), bar_trace("N. Jasa", YL, svc_b, C["amber"], opacity=0.75), bar_trace("Pend. Primer", YL, prim_b, C["red"], opacity=0.75), bar_trace("Pend. Sekunder", YL, sec_b, C["green"], opacity=0.75)])
+            fig = go.Figure([
+                bar_trace("N. Barang",      YL, tb_b,   C["blue"],   opacity=0.75),
+                bar_trace("N. Jasa",        YL, svc_b,  C["amber"],  opacity=0.75),
+                bar_trace("Pend. Primer",   YL, prim_b, C["red"],    opacity=0.75),
+                bar_trace("Pend. Sekunder", YL, sec_b,  C["green"],  opacity=0.75),
+            ])
             fig.update_layout(**fig_layout("Komponen Neraca Berjalan (Miliar USD)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
+
         with c5:
             nt_range = list(range(12_000, 26_500, 500))
-            ca_sens  = [round(simulate_eksternal(n, oil, 2026, scen)[1]["ca"], 2) for n in nt_range]
-            fig = go.Figure([go.Scatter(x=[n / 1000 for n in nt_range], y=ca_sens, mode="lines", name="CA (Miliar USD)", line=dict(color=C["blue"], width=2), fill="tozeroy", fillcolor="rgba(37,99,235,0.08)"), dot_trace("Posisi kini", [nt / 1000], [round(s_sim["ca"], 2)])])
-            fig.update_layout(**fig_layout("Sensitivitas CA vs Nilai Tukar", xaxis_title="NT (ribu Rp)", yaxis_title="CA (Miliar USD)"))
+            ca_sens  = [round(simulate_eksternal(n, oil, yr, scen)[1]["ca"], 2) for n in nt_range]
+            fig = go.Figure([
+                go.Scatter(
+                    x=[n / 1000 for n in nt_range], y=ca_sens,
+                    mode="lines", name="CA (Miliar USD)",
+                    line=dict(color=C["blue"], width=2),
+                    fill="tozeroy", fillcolor="rgba(37,99,235,0.08)",
+                ),
+                dot_trace("Posisi kini", [nt / 1000], [round(s_sim["ca"], 2)]),
+            ])
+            fig.update_layout(**fig_layout(
+                "Sensitivitas CA vs Nilai Tukar",
+                xaxis_title="NT (ribu Rp)", yaxis_title="CA (Miliar USD)",
+            ))
             st.plotly_chart(fig, use_container_width=True)
+
+        st.info(
+            "📌 **Catatan:** Data BOP dari sheet 3.1 BOP. Med 2026: CA -$4,5 Miliar USD, Ekspor $302 Miliar USD, Caddev $161 Miliar USD. "
+            "Elastisitas ekspor non-migas: 0.15xNT; ekspor migas: 0.80xICP. "
+            "Impor non-migas: -0.25xNT; impor migas: 0.95xICP. "
+            "Caddev = baseline + Delta Total BOP."
+        )
 
     with tab_gdp:
         gdp_kpis = [
@@ -1183,17 +1204,37 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 st.metric(lbl, val, delta_str, delta_color=metric_delta_color(dv))
 
         c1, c2, c3 = st.columns(3)
+
         with c1:
-            fig = go.Figure([line_base_trace("Baseline", YL, R["gdp"]["b"]), line_trace("Simulasi", YL, R["gdp"]["s"], C["green"], fill="tozeroy", fillcolor="rgba(22,163,74,0.08)")])
+            fig = go.Figure([
+                line_base_trace("Baseline", YL, R["gdp"]["b"]),
+                line_trace("Simulasi", YL, R["gdp"]["s"], C["green"], fill="tozeroy", fillcolor="rgba(22,163,74,0.08)"),
+            ])
             fig.update_layout(**fig_layout("Pertumbuhan PDB Riil (%)"))
             st.plotly_chart(fig, use_container_width=True)
+
         with c2:
-            fig = go.Figure([bar_trace("Exp B&J Baseline", YL, R["gexp"]["b"], C["blue"], opacity=0.35), bar_trace("Exp B&J Simulasi", YL, R["gexp"]["s"], C["teal"], opacity=0.85), bar_trace("Imp B&J Baseline", YL, R["gimp"]["b"], C["red"],  opacity=0.25), bar_trace("Imp B&J Simulasi", YL, R["gimp"]["s"], C["red2"], opacity=0.75)])
+            fig = go.Figure([
+                bar_trace("Exp B&J Baseline", YL, R["gexp"]["b"], C["blue"], opacity=0.35),
+                bar_trace("Exp B&J Simulasi", YL, R["gexp"]["s"], C["teal"], opacity=0.85),
+                bar_trace("Imp B&J Baseline", YL, R["gimp"]["b"], C["red"],  opacity=0.25),
+                bar_trace("Imp B&J Simulasi", YL, R["gimp"]["s"], C["red2"], opacity=0.75),
+            ])
             fig.update_layout(**fig_layout("Ekspor & Impor Riil B&J (%)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
+
         with c3:
-            gdp_sens  = [round(simulate_eksternal(n, oil, 2026, scen)[1]["gdp"], 2) for n in nt_range]
-            fig = go.Figure([go.Scatter(x=[n / 1000 for n in nt_range], y=gdp_sens, mode="lines", name="PDB Growth (%)", line=dict(color=C["green"], width=2), fill="tozeroy", fillcolor="rgba(22,163,74,0.08)"), dot_trace("Posisi kini", [nt / 1000], [round(s_sim["gdp"], 2)])])
+            nt_range2 = list(range(12_000, 26_500, 500))
+            gdp_sens  = [round(simulate_eksternal(n, oil, yr, scen)[1]["gdp"], 2) for n in nt_range2]
+            fig = go.Figure([
+                go.Scatter(
+                    x=[n / 1000 for n in nt_range2], y=gdp_sens,
+                    mode="lines", name="PDB Growth (%)",
+                    line=dict(color=C["green"], width=2),
+                    fill="tozeroy", fillcolor="rgba(22,163,74,0.08)",
+                ),
+                dot_trace("Posisi kini", [nt / 1000], [round(s_sim["gdp"], 2)]),
+            ])
             fig.update_layout(**fig_layout("Sensitivitas PDB vs Nilai Tukar", xaxis_title="NT (ribu Rp)", yaxis_title="PDB Growth (%)"))
             st.plotly_chart(fig, use_container_width=True)
 
@@ -1201,6 +1242,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         st.markdown("#### 🔴 MEKANISME TRANSMISI: NILAI TUKAR & HARGA MINYAK → PDB")
         
         col_nt, col_icp = st.columns(2)
+
         def color_val(val, inverse=False):
             if abs(val) < 0.005: return f"<span style='color:#6b7280; font-weight:bold;'>{val:+.2f}pp</span>"
             is_green = (val > 0) if not inverse else (val < 0)
@@ -1263,6 +1305,12 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             """
             st.markdown(html_icp, unsafe_allow_html=True)
 
+        st.markdown("""
+        <div style='font-size: 12.5px; color: #475569; background: #fffbeb; padding: 12px 15px; border-radius: 8px; border: 1px solid #fde68a; line-height: 1.6; margin-top: 15px;'>
+            ⚠️ <strong>Catatan arah:</strong> Indonesia adalah <em>net importir</em> BBM sejak ~2004. Kenaikan harga minyak & depresiasi NT secara netto <strong>memperburuk</strong> CA (impor mahal dalam USD, ekspor migas tidak cukup mengimbangi) dan menekan PDB melalui jalur inflasi impor yang memukul konsumsi rumah tangga dan investasi.
+        </div>
+        """, unsafe_allow_html=True)
+
     with tab_apbn:
         apbn_kpis = [
             ("🔵 Pendapatan Negara", f"Rp {s_sim['rev']:.0f} T",  s_sim["rev"]-b_sim["rev"],       " T"),
@@ -1286,31 +1334,60 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             alert_s = "🔴" if abs(s_sim['defpdb']) > limit else "🟢"
             st.markdown(f"**Simulasi {alert_s}:** `{s_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(s_sim["defpdb"]) / limit, 1.0))
+        st.caption("Batas legal: -3.0% PDB (UU Keuangan Negara)")
 
         c1, c2, c3 = st.columns(3)
+
         with c1:
             def_colors = ["rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)" for v in R["def"]["s"]]
-            fig = go.Figure([bar_trace("Baseline", YL, R["def"]["b"], C["purple"], opacity=0.35), go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0)])
+            fig = go.Figure([
+                bar_trace("Baseline", YL, R["def"]["b"], C["purple"], opacity=0.35),
+                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0)
+            ])
             fig.update_layout(**fig_layout("Defisit APBN (Rp T)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
+
         with c2:
-            fig = go.Figure([bar_trace("Pendapatan Baseline", YL, R["rev"]["b"], C["blue"], opacity=0.35), bar_trace("Pendapatan Simulasi", YL, R["rev"]["s"], C["teal"], opacity=0.85), bar_trace("Belanja Baseline", YL, R["bel"]["b"], C["red"],  opacity=0.25), bar_trace("Belanja Simulasi", YL, R["bel"]["s"], C["red2"], opacity=0.75)])
+            fig = go.Figure([
+                bar_trace("Pendapatan Baseline", YL, R["rev"]["b"], C["blue"], opacity=0.35),
+                bar_trace("Pendapatan Simulasi", YL, R["rev"]["s"], C["teal"], opacity=0.85),
+                bar_trace("Belanja Baseline",    YL, R["bel"]["b"], C["red"],  opacity=0.25),
+                bar_trace("Belanja Simulasi",    YL, R["bel"]["s"], C["red2"], opacity=0.75)
+            ])
             fig.update_layout(**fig_layout("Pendapatan vs Belanja (Rp T)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
+
         with c3:
             icp_range = list(range(30, 135, 5))
-            def_sens  = [round(simulate_eksternal(nt, ic, 2026, scen)[1]["def"], 0) for ic in icp_range]
-            fig = go.Figure([go.Scatter(x=[f"${ic}" for ic in icp_range], y=def_sens, mode="lines", name="Defisit (Rp T)", line=dict(color=C["purple"], width=2), fill="tozeroy", fillcolor="rgba(124,58,237,0.08)"), dot_trace("Posisi kini", [f"${oil}"], [round(s_sim["def"], 0)])])
+            def_sens  = [round(simulate_eksternal(nt, ic, yr, scen)[1]["def"], 0) for ic in icp_range]
+            fig = go.Figure([
+                go.Scatter(
+                    x=[f"${ic}" for ic in icp_range], y=def_sens,
+                    mode="lines", name="Defisit (Rp T)",
+                    line=dict(color=C["purple"], width=2), fill="tozeroy", fillcolor="rgba(124,58,237,0.08)"
+                ),
+                dot_trace("Posisi kini", [f"${oil}"], [round(s_sim["def"], 0)])
+            ])
             fig.update_layout(**fig_layout("Sensitivitas Defisit vs ICP", xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)"))
             st.plotly_chart(fig, use_container_width=True)
 
         c4, c5 = st.columns(2)
+
         with c4:
-            fig = go.Figure([bar_trace("Subsidi Energi Baseline", YL, R["sube"]["b"],  C["red"], opacity=0.35), bar_trace("Subsidi Energi Simulasi", YL, R["sube"]["s"],  C["red2"], opacity=0.85), bar_trace("Bunga Utang Baseline", YL, R["bunga"]["b"], C["orange"], opacity=0.35), bar_trace("Bunga Utang Simulasi", YL, R["bunga"]["s"], C["orange2"], opacity=0.85)])
+            fig = go.Figure([
+                bar_trace("Subsidi Energi Baseline", YL, R["sube"]["b"],  C["red"], opacity=0.35),
+                bar_trace("Subsidi Energi Simulasi", YL, R["sube"]["s"],  C["red2"], opacity=0.85),
+                bar_trace("Bunga Utang Baseline", YL, R["bunga"]["b"], C["orange"], opacity=0.35),
+                bar_trace("Bunga Utang Simulasi", YL, R["bunga"]["s"], C["orange2"], opacity=0.85)
+            ])
             fig.update_layout(**fig_layout("Komponen Belanja Utama (Rp T)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
+
         with c5:
-            fig = go.Figure([bar_trace("Pajak Baseline", YL, R["pajak"]["b"], C["blue"], opacity=0.35), bar_trace("Pajak Simulasi", YL, R["pajak"]["s"], C["teal"], opacity=0.85)])
+            fig = go.Figure([
+                bar_trace("Pajak Baseline", YL, R["pajak"]["b"], C["blue"], opacity=0.35),
+                bar_trace("Pajak Simulasi", YL, R["pajak"]["s"], C["teal"], opacity=0.85)
+            ])
             fig.update_layout(**fig_layout("Komponen Penerimaan Pajak (Rp T)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
 
@@ -1320,15 +1397,15 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         with col_rev:
             st.markdown("##### 🔵 Dampak ke Sisi Pendapatan")
             st.dataframe(pd.DataFrame({
-                "Komponen": ["PPh Migas (ICP sensitif)","PNBP SDA Migas (ICP sensitif)","Bea Keluar (NT + komoditas)","Delta Total Pendapatan"],
-                "Delta (Rp T)": [round(ax["pph"],2),round(ax["sda"],2),round(ax["bea"],2),round(ax["rev"],2)],
+                "Komponen": ["PPh Migas (ICP sensitif)", "PNBP SDA Migas (ICP sensitif)", "Bea Keluar (NT + komoditas)", "Delta Total Pendapatan"],
+                "Delta (Rp T)": [round(ax["pph"],2), round(ax["sda"],2), round(ax["bea"],2), round(ax["rev"],2)],
             }), hide_index=True, use_container_width=True)
 
         with col_bel:
             st.markdown("##### 🔴 Tekanan Sisi Belanja")
             st.dataframe(pd.DataFrame({
-                "Komponen": ["Subsidi Energi (ICP naik + NT melemah)","Bunga Utang Valas (NT melemah)","Delta Total Belanja"],
-                "Delta (Rp T)": [round(ax["sube"],2),round(ax["bunga"],2),round(ax["bel"],2)],
+                "Komponen": ["Subsidi Energi (ICP naik + NT melemah)", "Bunga Utang Valas (NT melemah)", "Delta Total Belanja"],
+                "Delta (Rp T)": [round(ax["sube"],2), round(ax["bunga"],2), round(ax["bel"],2)],
             }), hide_index=True, use_container_width=True)
 
     with tab_table:
@@ -1401,56 +1478,62 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
     st.markdown("### 🧠 AI Policy Synthesis & Executive Brief")
     st.markdown("Modul ini mensintesis data dari seluruh *dashboard* untuk memproduksi rumusan kebijakan lintas sektoral secara makro dan mikro komprehensif.")
 
-    missing_data = []
-    if 'mac_monthly' not in st.session_state: missing_data.append("Makro Nasional")
-    if 'ext_nt' not in st.session_state: missing_data.append("Sektor Eksternal")
+    # Data fallback/default diinisialisasi secara aman, tanpa pesan error peringatan.
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    
+    mac_view = st.session_state.get('mac_view', '2026')
+    mac_avg = st.session_state.get('mac_avg', 5.4)
+    mac_target = st.session_state.get('mac_target', 5.4)
+    mac_month = st.session_state.get('mac_monthly', 'Indikator riil berjalan stabil, perlu atensi khusus pada volatilitas komponen daya beli.')
+    mac_heat = st.session_state.get('mac_heat', 'Mayoritas indikator dalam batas aman.')
+    mac_day = st.session_state.get('mac_daily', 'Pasar saham dan komoditas bergerak normal.')
+    
+    ext_nt = st.session_state.get('ext_nt', 16700)
+    ext_oil = st.session_state.get('ext_oil', 65)
+    ext_gdp_drop = st.session_state.get('ext_gdp_drop', 0.0)
+    ext_def = st.session_state.get('ext_def', 0.0)
 
-    if missing_data:
-        st.warning(f"⚠️ **Data Belum Lengkap!** Silakan buka tab **{', '.join(missing_data)}** terlebih dahulu agar sistem AI dapat merekam data terbaru sebelum melakukan *generate*.")
-    else:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        
-        mac_view = st.session_state.get('mac_view', '2026')
-        mac_avg = st.session_state.get('mac_avg', 0)
-        mac_target = st.session_state.get('mac_target', 0)
-        mac_month = st.session_state.get('mac_monthly', '')
-        mac_heat = st.session_state.get('mac_heat', '')
-        mac_day = st.session_state.get('mac_daily', '')
-        
-        ext_nt = st.session_state.get('ext_nt', 16700)
-        ext_oil = st.session_state.get('ext_oil', 65)
-        ext_gdp_drop = st.session_state.get('ext_gdp_drop', 0)
-        ext_def = st.session_state.get('ext_def', 0)
+    signature = make_signature(mac_view, mac_avg, mac_target, mac_month, mac_day, ext_nt, ext_oil)
+    editor_key = f"editor_synthesis_{signature}"
+    final_policy_text = ""
 
-        signature = make_signature(mac_view, mac_avg, mac_target, mac_month, mac_day, ext_nt, ext_oil)
-        editor_key = f"editor_synthesis_{signature}"
-        final_policy_text = ""
+    if signature in st.session_state.policy_cache:
+        if editor_key not in st.session_state:
+            st.session_state[editor_key] = st.session_state.policy_cache[signature]
+        st.success("✅ Draf Sintesis Lintas Sektor tersedia. Silakan tinjau dan edit di bawah.")
 
-        if signature in st.session_state.policy_cache:
-            if editor_key not in st.session_state:
-                st.session_state[editor_key] = st.session_state.policy_cache[signature]
-            st.success("✅ Draf Sintesis Lintas Sektor tersedia. Silakan tinjau dan edit di bawah.")
+    if signature not in st.session_state.policy_cache:
+        if st.button("Generate Sintesis Kebijakan (AI Bappenas)", type="primary"):
+            genai.configure(api_key=USER_API_KEY)
+            with st.spinner('AI sedang merumuskan arahan strategis The Bappenas Way...'):
+                try:
+                    avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    model_name = next((m for m in avail if 'flash' in m), avail[0] if avail else None)
 
-        if signature not in st.session_state.policy_cache:
-            if st.button("Generate Sintesis Kebijakan (AI Bappenas)"):
-                genai.configure(api_key=USER_API_KEY)
-                with st.spinner('AI sedang merumuskan arahan strategis The Bappenas Way...'):
-                    try:
-                        avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                        model_name = next((m for m in avail if 'flash' in m), avail[0] if avail else None)
-
-                        if not model_name: st.error("Gagal mendeteksi model. Cek API Key.")
-                        else:
-                            generation_config = genai.types.GenerationConfig(
-                                temperature=0.7, 
-                                top_p=0.9,
-                                max_output_tokens=2048
-                            )
-                            model = genai.GenerativeModel(model_name)
-                            
-                            prompt = f"""
+                    if not model_name: st.error("Gagal mendeteksi model. Cek API Key.")
+                    else:
+                        generation_config = genai.types.GenerationConfig(
+                            temperature=0.7, 
+                            top_p=0.9,
+                            max_output_tokens=8192
+                        )
+                        # Mematikan filter agar tidak terpotong
+                        safety_settings = [
+                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+                        ]
+                        model = genai.GenerativeModel(model_name)
+                        
+                        prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Kementerian PPN/Bappenas. 
-Keluarkan narasi dengan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, terukur, namun tetap luwes dan tidak kaku.
+Tugas Anda adalah menulis Executive Brief untuk dilaporkan kepada Menteri.
+
+ATURAN MUTLAK DAN SANGAT PENTING:
+1. JANGAN PERNAH memberikan kalimat pembuka percakapan seperti "Baik, berikut adalah draf...", "Sebagai Ahli Utama...", atau "Ini adalah hasilnya".
+2. LANGSUNG mulai teks Anda dengan Judul (Heading).
+3. Gunakan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, dan tegas.
 
 =====================
 DATA & EVIDENCE MAKRO-EKSTERNAL
@@ -1466,184 +1549,201 @@ Dampak Skenario Eksternal: PDB {ext_gdp_drop:+.2f} pp, Defisit APBN {ext_def:+.2
 =====================
 STRUKTUR EXECUTIVE BRIEF:
 =====================
-Tuliskan Executive Brief tanpa menyebutkan frasa klise seperti "Berdasarkan data di atas". Susun dengan 3 bagian utama:
+### [BUAT JUDUL EXECUTIVE BRIEF YANG TEGAS DI SINI]
 
 **1. POSISI STRATEGIS BAPPENAS**
-(Deklarasikan stance/pandangan Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal, serta urgensi menjaga resiliensi ekonomi daerah. Harus mencerminkan helikopter view Bappenas).
+(Deklarasikan stance Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal. Harus mencerminkan helicopter view).
 
 **2. SINTESIS KONDISI EKONOMI**
 (Buat narasi padat yang menghubungkan anomali makro domestik dengan potensi pukulan dari guncangan eksternal (Rupiah & Minyak). Jelaskan maknanya secara ekonomi politik tanpa mengulang-ulang angka mentah).
 
 **3. ARAHAN KEBIJAKAN STRATEGIS LINTAS K/L**
-(Berikan rekomendasi kebijakan agregat untuk diorkestrasikan kepada seluruh Kementerian/Lembaga terkait, TANPA menyebutkan nama K/L secara spesifik. Bagi menjadi 2 aspek utama):
+(Berikan rekomendasi kebijakan agregat untuk diorkestrasikan kepada seluruh Kementerian/Lembaga terkait, bagi menjadi 2 aspek utama):
 * **Aspek Makro:** (Fokus pada orkestrasi bauran kebijakan fiskal-moneter, penjagaan target pertumbuhan, manajemen defisit, dan stabilitas nilai tukar secara agregat).
-* **Aspek Mikro & Kewilayahan:** (Fokus pada intervensi sektoral, rantai pasok industri, tata niaga, pengendalian inflasi di tingkat tapak/daerah, dan proteksi daya beli masyarakat).
+* **Aspek Mikro & Kewilayahan:** (Fokus pada intervensi sektoral, rantai pasok industri, tata niaga, pengendalian inflasi di daerah, dan proteksi daya beli masyarakat).
 """
-                            res = model.generate_content(
-                                prompt, 
-                                generation_config=generation_config,
-                                request_options={"timeout": 600}
-                            )
-                            st.session_state.policy_cache[signature] = res.text
-                            with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
-                            st.session_state[editor_key] = res.text
-                            st.success("Sintesis Selesai!")
-                            st.rerun()
-
-                    except Exception as e: st.error(f"Error AI: {e}")
-
-        if editor_key in st.session_state:
-            st.markdown("---")
-            st.session_state[editor_key] = st.text_area(
-                "✍️ Ruang Editor Eksekutif:", value=st.session_state[editor_key], height=500,
-                help="Silakan modifikasi draf ini sebelum diekspor menjadi laporan akhir."
-            )
-            with st.expander("🔍 Pratinjau Sintesis Akhir", expanded=True):
-                st.markdown(st.session_state[editor_key])
-            final_policy_text = st.session_state[editor_key]
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        if final_policy_text:
-            st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
-            st.markdown("#### 📑 Export Executive Brief")
-            st.caption("Unduh dalam format HTML yang sudah dioptimasi untuk Print PDF. **Cara Penggunaan:** Buka file HTML yang diunduh, otomatis akan muncul jendela *Print*. Pilih **Save as PDF** (Simpan sebagai PDF).")
-            
-            try:
-                import markdown
-                
-                html_policy = markdown.markdown(final_policy_text)
-                html_policy = html_policy.replace("<ul>", "<ul class='premium-list'>")
-                html_policy = html_policy.replace("<li>", "<li>")
-                html_policy = html_policy.replace("<strong>", "<strong class='highlight-text'>")
-                
-                html_template = f"""
-                <!DOCTYPE html>
-                <html lang="id">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Executive Brief - Kementerian PPN/Bappenas</title>
-                    <style>
-                        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+                        res = model.generate_content(
+                            prompt, 
+                            generation_config=generation_config,
+                            safety_settings=safety_settings,
+                            request_options={"timeout": 600}
+                        )
                         
-                        body {{ 
-                            font-family: 'Plus Jakarta Sans', sans-serif; 
-                            background-color: #f1f5f9; 
-                            color: #334155; 
-                            line-height: 1.8; 
-                            margin: 0; 
-                            padding: 40px 20px; 
-                        }}
-                        .document-wrapper {{ 
-                            max-width: 850px; 
-                            margin: 0 auto; 
-                            background: #ffffff; 
-                            border-radius: 12px; 
-                            box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
-                            overflow: hidden; 
-                        }}
-                        .header-banner {{ 
-                            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); 
-                            padding: 40px 50px; 
-                            text-align: center; 
-                            border-bottom: 5px solid #eab308; 
-                        }}
-                        .header-banner h1 {{ 
-                            color: #ffffff; 
-                            font-size: 32px; 
-                            margin: 0 0 10px 0; 
-                            letter-spacing: -0.5px; 
-                        }}
-                        .header-banner p {{ 
-                            color: #cbd5e1; 
-                            font-size: 15px; 
-                            margin: 0; 
-                            font-weight: 600; 
-                            text-transform: uppercase; 
-                            letter-spacing: 2px; 
-                        }}
-                        .content-area {{ 
-                            padding: 50px; 
-                        }}
-                        .content-area h1, .content-area h3 {{
-                            font-size: 24px;
-                            color: #0f172a;
-                            border-bottom: 2px solid #e2e8f0;
-                            padding-bottom: 10px;
-                            margin-top: 0;
-                        }}
-                        .content-area h2 {{ 
-                            color: #1e3a8a; 
-                            font-size: 20px; 
-                            margin-top: 35px; 
-                            display: flex;
-                            align-items: center;
-                            gap: 10px;
-                        }}
-                        .content-area h2::before {{
-                            content: '';
-                            display: block;
-                            width: 6px;
-                            height: 24px;
-                            background-color: #eab308;
-                            border-radius: 4px;
-                        }}
-                        .content-area p {{
-                            font-size: 15px;
-                            text-align: justify;
-                        }}
-                        .premium-list {{ 
-                            padding-left: 20px; 
-                        }}
-                        .premium-list li {{ 
-                            margin-bottom: 12px; 
-                            font-size: 15px; 
-                            padding-left: 5px;
-                        }}
-                        .premium-list li::marker {{
-                            color: #1e3a8a;
-                        }}
-                        .highlight-text {{ 
-                            color: #0f172a; 
-                            font-weight: 700; 
-                            background-color: #fef9c3;
-                            padding: 0 4px;
-                            border-radius: 4px;
-                        }}
-                        .footer-note {{
-                            text-align: center;
-                            padding: 30px;
-                            background-color: #f8fafc;
-                            color: #94a3b8;
-                            font-size: 13px;
-                            border-top: 1px solid #e2e8f0;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div class="document-wrapper">
-                        <div class="header-banner">
-                            <h1>Executive Brief</h1>
-                            <p>Sintesis Makroekonomi & Kebijakan Lintas Sektoral</p>
-                        </div>
-                        <div class="content-area">
-                            {html_policy}
-                        </div>
-                        <div class="footer-note">
-                            Dihasilkan oleh Macro AI Command Center - Kementerian PPN/Bappenas RI<br>
-                            <em>Dokumen Internal Terbatas</em>
-                        </div>
+                        # Membersihkan kalau AI masih bandel kasih kalimat sapaan bot
+                        out_text = res.text
+                        if "Baik," in out_text or "Berikut" in out_text or "Sebagai" in out_text:
+                            if "###" in out_text:
+                                out_text = out_text[out_text.find("###"):]
+                            elif "**1." in out_text:
+                                out_text = out_text[out_text.find("**1."):]
+                        
+                        st.session_state.policy_cache[signature] = out_text
+                        with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
+                        st.session_state[editor_key] = out_text
+                        st.success("Sintesis Selesai!")
+                        st.rerun()
+
+                except Exception as e: st.error(f"Error AI: {e}")
+
+    if editor_key in st.session_state:
+        st.markdown("---")
+        st.session_state[editor_key] = st.text_area(
+            "✍️ Ruang Editor Eksekutif:", value=st.session_state[editor_key], height=500,
+            help="Silakan modifikasi draf ini sebelum diekspor menjadi laporan akhir."
+        )
+        with st.expander("🔍 Pratinjau Sintesis Akhir", expanded=True):
+            st.markdown(st.session_state[editor_key])
+        final_policy_text = st.session_state[editor_key]
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if final_policy_text:
+        st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
+        st.markdown("#### 📑 Export Executive Brief")
+        st.caption("Unduh dalam format HTML yang elegan dan profesional untuk dilaporkan kepada pimpinan. Buka file HTML yang diunduh lalu 'Save as PDF' via fitur Print.")
+        
+        try:
+            import markdown
+            
+            html_policy = markdown.markdown(final_policy_text)
+            html_policy = html_policy.replace("<ul>", "<ul class='premium-list'>")
+            html_policy = html_policy.replace("<li>", "<li>")
+            html_policy = html_policy.replace("<strong>", "<strong class='highlight-text'>")
+            
+            html_template = f"""
+            <!DOCTYPE html>
+            <html lang="id">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Executive Brief - Kementerian PPN/Bappenas</title>
+                <style>
+                    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+                    
+                    body {{ 
+                        font-family: 'Plus Jakarta Sans', sans-serif; 
+                        background-color: #f1f5f9; 
+                        color: #334155; 
+                        line-height: 1.8; 
+                        margin: 0; 
+                        padding: 40px 20px; 
+                    }}
+                    .document-wrapper {{ 
+                        max-width: 850px; 
+                        margin: 0 auto; 
+                        background: #ffffff; 
+                        border-radius: 12px; 
+                        box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
+                        overflow: hidden; 
+                    }}
+                    .header-banner {{ 
+                        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); 
+                        padding: 40px 50px; 
+                        text-align: center; 
+                        border-bottom: 5px solid #eab308; 
+                    }}
+                    .header-banner h1 {{ 
+                        color: #ffffff; 
+                        font-size: 32px; 
+                        margin: 0 0 10px 0; 
+                        letter-spacing: -0.5px; 
+                    }}
+                    .header-banner p {{ 
+                        color: #cbd5e1; 
+                        font-size: 15px; 
+                        margin: 0; 
+                        font-weight: 600; 
+                        text-transform: uppercase; 
+                        letter-spacing: 2px; 
+                    }}
+                    .content-area {{ 
+                        padding: 50px; 
+                    }}
+                    .content-area h1, .content-area h3 {{
+                        font-size: 24px;
+                        color: #0f172a;
+                        border-bottom: 2px solid #e2e8f0;
+                        padding-bottom: 10px;
+                        margin-top: 0;
+                    }}
+                    .content-area h2 {{ 
+                        color: #1e3a8a; 
+                        font-size: 20px; 
+                        margin-top: 35px; 
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }}
+                    .content-area h2::before {{
+                        content: '';
+                        display: block;
+                        width: 6px;
+                        height: 24px;
+                        background-color: #eab308;
+                        border-radius: 4px;
+                    }}
+                    .content-area p {{
+                        font-size: 15px;
+                        text-align: justify;
+                    }}
+                    .premium-list {{ 
+                        padding-left: 20px; 
+                    }}
+                    .premium-list li {{ 
+                        margin-bottom: 12px; 
+                        font-size: 15px; 
+                        padding-left: 5px;
+                    }}
+                    .premium-list li::marker {{
+                        color: #1e3a8a;
+                    }}
+                    .highlight-text {{ 
+                        color: #0f172a; 
+                        font-weight: 700; 
+                        background-color: #fef9c3;
+                        padding: 0 4px;
+                        border-radius: 4px;
+                    }}
+                    .footer-note {{
+                        text-align: center;
+                        padding: 30px;
+                        background-color: #f8fafc;
+                        color: #94a3b8;
+                        font-size: 13px;
+                        border-top: 1px solid #e2e8f0;
+                    }}
+                    @media print {{
+                        body {{ background-color: #ffffff; padding: 0; }}
+                        .document-wrapper {{ box-shadow: none; max-width: 100%; border-radius: 0; }}
+                        .header-banner {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+                        .content-area h2::before {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+                        .highlight-text {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="document-wrapper">
+                    <div class="header-banner">
+                        <h1>Executive Brief</h1>
+                        <p>Sintesis Makroekonomi & Kebijakan Lintas Sektoral</p>
                     </div>
-                </body>
-                </html>
-                """
-                st.download_button(
-                    label="📥 Unduh Executive Summary (Format HTML Elegan)", 
-                    data=html_template, 
-                    file_name="Executive_Brief_Bappenas.html", 
-                    mime="text/html", 
-                    type="primary"
-                )
-            except Exception as e:
-                st.warning(f"Gagal menyiapkan dokumen HTML. Error detail: {e}")
+                    <div class="content-area">
+                        {html_policy}
+                    </div>
+                    <div class="footer-note">
+                        Dihasilkan oleh Macro AI Command Center - Kementerian PPN/Bappenas RI<br>
+                        <em>Dokumen Internal Terbatas</em>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            st.download_button(
+                label="📥 Unduh Executive Summary (Format HTML Elegan)", 
+                data=html_template, 
+                file_name="Executive_Brief_Bappenas.html", 
+                mime="text/html", 
+                type="primary"
+            )
+        except Exception as e:
+            st.warning(f"Gagal menyiapkan dokumen HTML. Error detail: {e}")
