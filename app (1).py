@@ -1526,7 +1526,7 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                         ]
                         model = genai.GenerativeModel(model_name)
                         
-                       prompt = f"""
+                        prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Kementerian PPN/Bappenas. 
 Tugas Anda adalah menulis Executive Brief dari "Dashboard Macro Early Warning System" untuk dilaporkan kepada Menteri PPN/Kepala Bappenas.
 
