@@ -129,7 +129,7 @@ EL = {
     "bop_svc_nt":      0.05,   "bop_prim_nt":     -0.03,
     "share_exp_migas": 0.06,   "share_imp_migas":  0.16,
     
-    # Transmisi GDP
+    # Transmisi GDP (PDB Turun saat Depresiasi/ICP Naik)
     "gexp_nt":         0.15,   "gimp_nt":         -0.10, 
     "cons_nt":        -0.10,   "inv_nt":          -0.06, 
     "gexp_oil":        0.025,  "gimp_oil":         0.018,
@@ -178,7 +178,7 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
     s["capbal"]     = b["capbal"]
     s["finbal"]     = b["finbal"]
     
-    # Kalkulasi Delta untuk BOP agar 100% konsisten jika baseline user ada selisih internal
+    # Kalkulasi Delta untuk BOP agar 100% konsisten
     delta_trade = s["tradebal"] - b["tradebal"]
     delta_svc = s["svcbal"] - b["svcbal"]
     delta_prim = s["primbal"] - b["primbal"]
@@ -248,8 +248,11 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
 
     s["rev"]    = b["rev"]   + dRevTotal
     s["bel"]    = b["bel"]   + dBelTotal
-    s["def"]    = b["def"]   + dRevTotal - dBelTotal # Ditambahkan secara selisih
+    
+    # Delta approach for APBN Deficit
+    s["def"]    = b["def"]   + dRevTotal - dBelTotal 
     s["defpdb"] = (s["def"]  / b["pdb"]) * 100
+    
     s["sube"]   = b["sube"]  + dSubsE
     s["bunga"]  = b["bunga"] + dBunga
     s["pajak"]  = b["pajak"] + dBea
@@ -497,7 +500,6 @@ st.markdown("""
     font-size: 13px; font-weight: 600; margin-bottom: 14px;
 }
 div[data-testid="metric-container"] > div { font-family: monospace; }
-/* TAMBAHAN UNTUK MENU ATAS HORIZONTAL */
 div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify-content: center; background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb;}
 </style>
 """, unsafe_allow_html=True)
@@ -764,7 +766,6 @@ if main_menu == "📊 Makro Nasional (DFM)":
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
         
-        # === TOMBOL DOWNLOAD DFM NOWCASTING ===
         if not df_full_results.empty:
             import io
             buffer = io.BytesIO()
@@ -778,111 +779,92 @@ if main_menu == "📊 Makro Nasional (DFM)":
             )
         st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown("### 🔍 Deep Dive: Indikator Makro Bulanan")
-        df_makro['Tanggal'] = pd.to_datetime(df_makro['Tanggal'])
-        df_makro = df_makro.sort_values(by='Tanggal')
+        st.markdown("### 📈 Monitoring Data Harian")
+        selected_daily_view = st.radio("Pilih Mode Tampilan Pasar:", ["Data Berjalan", "Data Rata-Rata"], horizontal=True, key="daily_view_toggle")
         
-        # === INI BARIS YANG SEMPAT HILANG MIN ===
-        indicator_cols = [c for c in df_makro.columns if c != 'Tanggal']
-        
-        monthly_summary_list = [] 
-        monthly_summary_str = "Data bulanan tidak tersedia."
-        
-        # --- Mengelompokkan Indikator Bulanan ---
-        group_riil = ['PMI Manufaktur Negara Berkembang', 'Penjualan Mobil', 'Penjualan Motor', 'Penjualan semen', 'Indeks Keyakinan Konsumen', 'Inflasi']
-        group_eksternal = ['Ekspor Barang', 'Impor Barang Konsumsi', 'Impor Bahan Baku', 'Impor Barang Modal']
-        group_moneter = ['Jumlah Uang Yang Beredar', 'Kredit Perbankan', 'Suku Bunga', 'Nilai Tukar terhadap Dolar AS']
-        
-        def render_monthly_cards(indicators_list):
-            cols = st.columns(4)
-            idx = 0
-            for col in indicators_list:
-                if col not in df_makro.columns: continue
-                valid_series = df_makro[['Tanggal', col]].dropna()
-                if valid_series.empty: continue
-                latest_row = valid_series.iloc[-1]
-                val = latest_row[col]
-                date_obj = latest_row['Tanggal']
-                date_str = date_obj.strftime("%b %Y")
-                
-                if len(valid_series) > 1:
-                    prev_row = valid_series.iloc[-2]
-                    val_prev_mtm = prev_row[col]
-                    mtm_diff = val - val_prev_mtm
-                    mtm_pct = (mtm_diff / abs(val_prev_mtm)) * 100 if val_prev_mtm != 0 else 0
-                else: mtm_diff, mtm_pct = 0, 0
+        daily_summary_list, daily_berjalan_list, daily_rata_list = [], [], []
+        daily_summary_str = daily_berjalan_str = daily_rata_str = "Data harian tidak tersedia."
 
-                target_date_yoy = date_obj - pd.DateOffset(years=1)
-                row_yoy = df_makro[(df_makro['Tanggal'].dt.year == target_date_yoy.year) & (df_makro['Tanggal'].dt.month == target_date_yoy.month)]
-                
-                if not row_yoy.empty and pd.notna(row_yoy.iloc[0][col]):
-                    val_yoy = row_yoy.iloc[0][col]
-                    yoy_diff = val - val_yoy
-                    yoy_pct = (yoy_diff / abs(val_yoy)) * 100 if val_yoy != 0 else 0
-                    has_yoy = True
-                else: yoy_diff, yoy_pct, has_yoy = 0, 0, False
-
-                rule_naik_bagus = ATURAN_WARNA.get(col, True)
-                is_level_indicator = any(k in col for k in ["PMI", "Inflasi", "Suku Bunga", "Nilai Tukar", "Indeks Keyakinan Konsumen"])
-
-                if is_level_indicator:
-                    disp = f"{val:,.2f}" if val > 1000 else f"{val:.2f}"
-                    badge_1 = f"MtM: {mtm_diff:+.2f}"
-                    badge_2 = f"YoY: {yoy_diff:+.2f}" if has_yoy else "YoY: -"
-                    is_bad_mtm = (rule_naik_bagus and mtm_diff < 0) or (not rule_naik_bagus and mtm_diff > 0)
-                    is_bad_yoy = (rule_naik_bagus and yoy_diff < 0) or (not rule_naik_bagus and yoy_diff > 0)
-                else:
-                    disp = f"{val:,.2f}"
-                    badge_1 = f"MtM: {mtm_pct:+.2f}%"
-                    badge_2 = f"YoY: {yoy_pct:+.2f}%" if has_yoy else "YoY: -"
-                    is_bad_mtm = (rule_naik_bagus and mtm_pct < 0) or (not rule_naik_bagus and mtm_pct > 0)
-                    is_bad_yoy = (rule_naik_bagus and yoy_pct < 0) or (not rule_naik_bagus and yoy_pct > 0)
-
-                if "PMI" in col and val < 50: is_bad_mtm, is_bad_yoy = True, True
-                color_1 = "badge-red" if is_bad_mtm else "badge-green"
-                color_2 = "badge-red" if is_bad_yoy else "badge-green"
-                status_mtm = "Melemah" if is_bad_mtm else "Membaik"
-                status_yoy = "Melemah" if is_bad_yoy else "Membaik"
-                monthly_summary_list.append(f"[{col}] Data: {disp} | {badge_1} ({status_mtm}) | {badge_2} ({status_yoy})")
-
-                html = f"""
-                <div class="glass-card" style="padding: 15px; margin-bottom: 10px;">
-                    <div class="card-title">{col}</div>
-                    <div class="card-value">{disp}</div>
-                    <div style="font-size: 11px; color: #666; margin-bottom: 8px; font-style: italic;">Data: {date_str}</div>
-                    <span class="badge {color_1}">{badge_1}</span>
-                    <span class="badge {color_2}">{badge_2}</span>
-                </div>
-                """
-                with cols[idx%4]: st.markdown(html, unsafe_allow_html=True)
-                idx += 1
-
-        # --- Tampilkan UI Kelompok 1: Sektor Riil ---
-        st.markdown("##### 🏭 Sektor Riil & Daya Beli")
-        render_monthly_cards(group_riil)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # --- Tampilkan UI Kelompok 2: Eksternal ---
-        st.markdown("##### 🚢 Sektor Eksternal (Ekspor & Impor)")
-        render_monthly_cards(group_eksternal)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # --- Tampilkan UI Kelompok 3: Moneter & Keuangan ---
-        st.markdown("##### 🏦 Sektor Moneter & Keuangan")
-        render_monthly_cards(group_moneter)
-        
-        # Render otomatis jika ada indikator baru di excel yang belum terpetakan
-        all_grouped = set(group_riil + group_eksternal + group_moneter)
-        remaining_cols = [c for c in df_makro.columns if c != 'Tanggal' and c not in all_grouped]
-        if remaining_cols:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("##### 📌 Indikator Lainnya")
-            render_monthly_cards(remaining_cols)
+        if 'df_daily' in locals() and df_daily is not None:
+            group_keuangan = ['IHSG', 'Saham Daily', 'Obligasi Daily']
+            group_komoditas = ['Brent', 'WTI', 'CPO', 'Emas', 'Batubara', 'Natural Gas', 'Nikel']
             
-        if monthly_summary_list: monthly_summary_str = "\n".join(monthly_summary_list)
-        st.session_state['mac_monthly'] = monthly_summary_str
+            def render_cards(indicators_list):
+                cols = st.columns(4)
+                idx = 0
+                for col in indicators_list:
+                    if col not in df_daily.columns: continue
+                    valid_series = df_daily[[date_col_daily, col]].dropna()
+                    if valid_series.empty: continue
+                    latest_row = valid_series.iloc[-1]
+                    val = latest_row[col] 
+                    date_obj = latest_row[date_col_daily]
+                    date_str = date_obj.strftime("%d %b %Y")
+                    current_year = date_obj.year
+                    
+                    if len(valid_series) > 1:
+                        prev_row = valid_series.iloc[-2]
+                        val_prev = prev_row[col]
+                        dtd = ((val - val_prev) / val_prev) * 100 if val_prev != 0 else 0
+                    else: dtd = 0
+                        
+                    prev_year_data = valid_series[valid_series[date_col_daily].dt.year == current_year - 1]
+                    if not prev_year_data.empty:
+                        ytd_base_val = prev_year_data.iloc[-1][col]
+                        ytd = ((val - ytd_base_val) / ytd_base_val) * 100 if ytd_base_val != 0 else 0
+                        ytd_str = f"YTD: {ytd:+.2f}%"
+                    else: ytd, ytd_str = 0, "YTD: -"
+                    
+                    current_year_data = valid_series[valid_series[date_col_daily].dt.year == current_year]
+                    avg_current = current_year_data[col].mean() if not current_year_data.empty else val
+                    avg_prev = prev_year_data[col].mean() if not prev_year_data.empty else 0
+                    avg_growth = ((avg_current - avg_prev) / avg_prev) * 100 if avg_prev != 0 else 0
+
+                    disp_val_b = f"{val:,.2f}" if val > 10 else f"{val:.2f}"
+                    daily_berjalan_list.append(f"{col}: {disp_val_b} (DTD: {dtd:+.2f}%, {ytd_str})")
+                    disp_val_r = f"{avg_current:,.2f}" if avg_current > 10 else f"{avg_current:.2f}"
+                    daily_rata_list.append(f"{col}: Avg {current_year} = {disp_val_r} (Perubahan vs Avg 2025: {avg_growth:+.2f}%)")
+
+                    if "Berjalan" in selected_daily_view:
+                        disp_val = disp_val_b
+                        color_1 = "badge-red" if dtd < 0 else "badge-green"
+                        color_2 = "badge-red" if ytd < 0 else "badge-green"
+                        badge_1_str, badge_2_str = f"DTD: {dtd:+.2f}%", ytd_str
+                        subtitle_str = f"Data Spot: {date_str}"
+                        daily_summary_list.append(f"{col}: {disp_val_b} (DTD: {dtd:+.2f}%)")
+                    else:
+                        disp_val = disp_val_r
+                        color_1 = "badge-neutral" 
+                        color_2 = "badge-red" if avg_growth < 0 else "badge-green"
+                        avg_prev_disp = f"{avg_prev:,.2f}" if avg_prev > 10 else f"{avg_prev:.2f}"
+                        badge_1_str, badge_2_str = f"Avg '25: {avg_prev_disp}", f"Δ {avg_growth:+.2f}%"
+                        subtitle_str = f"Rata-rata YTD {current_year}"
+                        daily_summary_list.append(f"{col}: Avg {current_year} = {disp_val_r} (Perubahan vs Avg 2025: {avg_growth:+.2f}%)")
+
+                    html = f"""
+                    <div class="glass-card" style="padding: 15px; margin-bottom: 10px;">
+                        <div class="card-title">{col}</div>
+                        <div class="card-value">{disp_val}</div>
+                        <div style="font-size: 11px; color: #666; margin-bottom: 8px; font-style: italic;">{subtitle_str}</div>
+                        <span class="badge {color_1}">{badge_1_str}</span>
+                        <span class="badge {color_2}">{badge_2_str}</span>
+                    </div>
+                    """
+                    with cols[idx % 4]: st.markdown(html, unsafe_allow_html=True)
+                    idx += 1
+
+            st.markdown("##### 🏦 Pasar Keuangan")
+            render_cards(group_keuangan)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            st.markdown("##### 🛢️ Komoditas")
+            render_cards(group_komoditas)
+                
+            if daily_summary_list: daily_summary_str = " | ".join(daily_summary_list)
+            
+        st.session_state['mac_daily'] = daily_summary_str
+        st.markdown("<br>", unsafe_allow_html=True)
 
         ATURAN_WARNA = {
             'PMI Manufaktur Negara Berkembang': True, 'Jumlah Uang Yang Beredar': True, 
@@ -901,7 +883,6 @@ if main_menu == "📊 Makro Nasional (DFM)":
         monthly_summary_list = [] 
         monthly_summary_str = "Data bulanan tidak tersedia."
         
-        # --- Mengelompokkan Indikator Bulanan ---
         group_riil = ['PMI Manufaktur Negara Berkembang', 'Penjualan Mobil', 'Penjualan Motor', 'Penjualan semen', 'Indeks Keyakinan Konsumen', 'Inflasi']
         group_eksternal = ['Ekspor Barang', 'Impor Barang Konsumsi', 'Impor Bahan Baku', 'Impor Barang Modal']
         group_moneter = ['Jumlah Uang Yang Beredar', 'Kredit Perbankan', 'Suku Bunga', 'Nilai Tukar terhadap Dolar AS']
@@ -970,23 +951,19 @@ if main_menu == "📊 Makro Nasional (DFM)":
                 with cols[idx%4]: st.markdown(html, unsafe_allow_html=True)
                 idx += 1
 
-        # --- Tampilkan UI Kelompok 1: Sektor Riil ---
-        st.markdown("##### 🏭 Sektor Riil")
+        st.markdown("##### 🏭 Sektor Riil & Daya Beli")
         render_monthly_cards(group_riil)
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- Tampilkan UI Kelompok 2: Eksternal ---
         st.markdown("##### 🚢 Sektor Eksternal (Ekspor & Impor)")
         render_monthly_cards(group_eksternal)
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- Tampilkan UI Kelompok 3: Moneter & Keuangan ---
         st.markdown("##### 🏦 Sektor Moneter & Keuangan")
         render_monthly_cards(group_moneter)
         
-        # Render otomatis jika ada indikator baru di excel yang belum terpetakan
         all_grouped = set(group_riil + group_eksternal + group_moneter)
         remaining_cols = [c for c in df_makro.columns if c != 'Tanggal' and c not in all_grouped]
         if remaining_cols:
@@ -1087,7 +1064,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         st.markdown("### 🇮🇩 BI-BAPPENAS")
         st.divider()
 
-        # Skenario & Tahun
         st.markdown("**BASELINE SKENARIO**")
         scen = st.radio(
             "Skenario", ["med", "high"], horizontal=True,
@@ -1101,7 +1077,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         nt_default  = D["nt"][yr]
         icp_default = D["icp"][yr]
 
-        # Preset
         st.divider()
         st.markdown("**PRESET SKENARIO CEPAT**")
         preset = st.selectbox("Pilih preset", [
@@ -1122,7 +1097,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 
         st.divider()
 
-        # Input NT & ICP
         st.markdown("**NILAI TUKAR (Rp/USD)**")
         nt = st.number_input(
             "NT", min_value=10_000, max_value=30_000,
@@ -1139,10 +1113,8 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         )
         st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
 
-        # Simulasi tahun terpilih
         b_sim, s_sim = simulate_eksternal(nt, oil, yr, scen)
 
-        # Panel delta
         st.divider()
         st.markdown(f"**DELTA VS BASELINE {yr}**")
         delta_rows = [
@@ -1162,7 +1134,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 
     st.markdown("### 🌍 Dashboard Sensitivitas Eksternal & Fiskal RI")
     
-    # Simpan State Eksternal untuk AI dengan aman 
     st.session_state['ext_nt'] = nt
     st.session_state['ext_oil'] = oil
     st.session_state['ext_gdp_drop'] = s_sim["gdp"] - b_sim["gdp"]
@@ -1174,9 +1145,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 
     for y in YEARS:
         bb, ss = simulate_eksternal(nt, oil, y, scen)
-        if y == yr: 
-            b_sim, s_sim = bb, ss
-            
         for k, bval, sval, dec in [
             ("ca",       bb["ca"],       ss["ca"],       2),
             ("exp",      bb["exp"],      ss["exp"],      1),
@@ -1288,15 +1256,12 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             st.plotly_chart(fig, width="stretch")
 
         st.info(
-            "📌 **Catatan:** Data BOP dari sheet 3.1 BOP. Med 2026: CA -$4,5 Miliar USD, Ekspor $302 Miliar USD, Caddev $161 Miliar USD. "
-            "Elastisitas ekspor non-migas: 0.15xNT; ekspor migas: 0.80xICP. "
-            "Impor non-migas: -0.25xNT; impor migas: 0.95xICP. "
-            "Caddev = baseline + Delta Total BOP."
+            "📌 **Catatan:** Data BOP dari sheet 3.1 BOP. Elastisitas ekspor non-migas: 0.15xNT; ekspor migas: 0.80xICP. "
+            "Impor non-migas: -0.25xNT; impor migas: 0.95xICP. Caddev = baseline + Delta Total BOP."
         )
 
     with tab_gdp:
         
-        # KPI
         gdp_kpis = [
             ("🟢 PDB Growth",     f"{s_sim['gdp']:.2f}%",  s_sim["gdp"]-b_sim["gdp"],  " pp"),
             ("🔵 Konsumsi RT",    f"{s_sim['cons']:.2f}%", s_sim["cons"]-b_sim["cons"]," pp"),
@@ -1455,8 +1420,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             ]
             fig = go.Figure([
                 bar_trace("Baseline", YL, R["def"]["b"], C["purple"], opacity=0.35),
-                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"],
-                       marker_color=def_colors, marker_line_width=0),
+                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0),
             ])
             fig.update_layout(**fig_layout("Defisit APBN (Rp T)", barmode="group"))
             st.plotly_chart(fig, width="stretch")
@@ -1478,15 +1442,11 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 go.Scatter(
                     x=[f"${ic}" for ic in icp_range], y=def_sens,
                     mode="lines", name="Defisit (Rp T)",
-                    line=dict(color=C["purple"], width=2),
-                    fill="tozeroy", fillcolor="rgba(124,58,237,0.08)",
+                    line=dict(color=C["purple"], width=2), fill="tozeroy", fillcolor="rgba(124,58,237,0.08)"
                 ),
-                dot_trace("Posisi kini", [f"${oil}"], [round(s_sim["def"], 0)]),
+                dot_trace("Posisi kini", [f"${oil}"], [round(s_sim["def"], 0)])
             ])
-            fig.update_layout(**fig_layout(
-                "Sensitivitas Defisit vs ICP",
-                xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)",
-            ))
+            fig.update_layout(**fig_layout("Sensitivitas Defisit vs ICP", xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)"))
             st.plotly_chart(fig, width="stretch")
 
         c4, c5 = st.columns(2)
@@ -1509,7 +1469,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             fig.update_layout(**fig_layout("Komponen Penerimaan Pajak (Rp T)", barmode="group"))
             st.plotly_chart(fig, width="stretch")
 
-        # Tabel transmisi APBN
         ax = s_sim["ax"]
         col_rev, col_bel = st.columns(2)
 
@@ -1545,14 +1504,10 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 ],
             }), hide_index=True, width="stretch")
 
-    # -------------------------------------------------------------------------
-    # TAB TABEL LENGKAP
-    # -------------------------------------------------------------------------
     with tab_table:
-        st.markdown("#### Tabel Lengkap BOP, GDP & APBN — Baseline vs Simulasi")
+        st.markdown(f"#### Tabel Lengkap BOP, GDP & APBN — Baseline vs Simulasi (Tahun {yr})")
 
         table_def = [
-            # (label,                        key_b,       key_s,       dec, satuan)
             ("I. Transaksi Berjalan",          "ca",        "ca",        2,   "Miliar USD"),
             ("  Neraca Barang",                "tradebal",  "tradebal",  2,   "Miliar USD"),
             ("    Ekspor (fob)",               "exp",       "exp",       1,   "Miliar USD"),
@@ -1597,21 +1552,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 "Satuan":    unit,
             })
 
-        st.dataframe(
-            pd.DataFrame(rows_tbl),
-            hide_index=True,
-            width="stretch",
-            height=720,
-        )
-
-        st.caption(
-            "Baseline = skenario Med/High dari Excel (sheet 3.1 BOP, 2.1 GDP Exp Riil, 4.1 APBN). "
-            "Simulasi = baseline + efek elastisitas parsial dari deviasi NT & ICP.\n"
-            "GDP: komponen aktif berubah Ekspor, Impor, Konsumsi & Investasi.\n"
-            "APBN: penerimaan migas & PNBP SDA sensitif ICP; subsidi energi naik saat ICP naik dan NT melemah. "
-            "Defisit maks -3% PDB (UU).\n"
-            "BOP: Miliar USD | GDP: % | APBN: Rp Triliun."
-        )
+        st.dataframe(pd.DataFrame(rows_tbl), hide_index=True, use_container_width=True, height=720)
 
 # =========================================================================
 # MODUL 3: EKONOMI DAERAH (WIP)
@@ -1688,9 +1629,9 @@ Tugas Anda adalah menulis Executive Brief dari "Dashboard Macro Early Warning Sy
 
 ATURAN MUTLAK DAN SANGAT PENTING:
 1. JANGAN PERNAH memberikan kalimat pembuka atau basa-basi (seperti "Baik, berikut adalah draf...", "Sebagai Ahli Utama...", atau "Ini adalah hasilnya").
-2. Tuliskan jawaban ANDA LANGSUNG dimulai dengan "### [JUDUL EXECUTIVE BRIEF]".
+2. LANGSUNG mulai teks Anda dengan Judul (Heading Utama).
 3. Gunakan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, dan tegas.
-4. PASTIKAN laporan ditulis LENGKAP dari Bagian 1 sampai Bagian 3 selesai. JANGAN berhenti di tengah jalan.
+4. Fokus pada penyelesaian masalah (problem-solving) dan antisipasi risiko ke depan.
 
 =====================
 DATA & EVIDENCE MAKRO-EKSTERNAL (EARLY WARNING)
