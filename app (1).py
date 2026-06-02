@@ -778,96 +778,111 @@ if main_menu == "📊 Makro Nasional (DFM)":
             )
         st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown("### 📈 Monitoring Data Harian")
-        selected_daily_view = st.radio("Pilih Mode Tampilan Pasar:", ["Data Berjalan", "Data Rata-Rata"], horizontal=True, key="daily_view_toggle")
+        st.markdown("### 🔍 Deep Dive: Indikator Makro Bulanan")
+        df_makro['Tanggal'] = pd.to_datetime(df_makro['Tanggal'])
+        df_makro = df_makro.sort_values(by='Tanggal')
         
-        daily_summary_list, daily_berjalan_list, daily_rata_list = [], [], []
-        daily_summary_str = daily_berjalan_str = daily_rata_str = "Data harian tidak tersedia."
-
-        if 'df_daily' in locals() and df_daily is not None:
-            # --- Mengelompokkan Indikator Sesuai Arahan ---
-            group_keuangan = ['IHSG', 'Saham Daily', 'Obligasi Daily']
-            group_komoditas = ['Brent', 'WTI', 'CPO', 'Emas', 'Batubara', 'Natural Gas', 'Nikel']
-            
-            # Helper function untuk merender kartu berdasarkan kelompok
-            def render_cards(indicators_list):
-                cols = st.columns(4)
-                idx = 0
-                for col in indicators_list:
-                    if col not in df_daily.columns: continue
-                    valid_series = df_daily[[date_col_daily, col]].dropna()
-                    if valid_series.empty: continue
-                    latest_row = valid_series.iloc[-1]
-                    val = latest_row[col] 
-                    date_obj = latest_row[date_col_daily]
-                    date_str = date_obj.strftime("%d %b %Y")
-                    current_year = date_obj.year
-                    
-                    if len(valid_series) > 1:
-                        prev_row = valid_series.iloc[-2]
-                        val_prev = prev_row[col]
-                        dtd = ((val - val_prev) / val_prev) * 100 if val_prev != 0 else 0
-                    else: dtd = 0
-                        
-                    prev_year_data = valid_series[valid_series[date_col_daily].dt.year == current_year - 1]
-                    if not prev_year_data.empty:
-                        ytd_base_val = prev_year_data.iloc[-1][col]
-                        ytd = ((val - ytd_base_val) / ytd_base_val) * 100 if ytd_base_val != 0 else 0
-                        ytd_str = f"YTD: {ytd:+.2f}%"
-                    else: ytd, ytd_str = 0, "YTD: -"
-                    
-                    current_year_data = valid_series[valid_series[date_col_daily].dt.year == current_year]
-                    avg_current = current_year_data[col].mean() if not current_year_data.empty else val
-                    avg_prev = prev_year_data[col].mean() if not prev_year_data.empty else 0
-                    avg_growth = ((avg_current - avg_prev) / avg_prev) * 100 if avg_prev != 0 else 0
-
-                    disp_val_b = f"{val:,.2f}" if val > 10 else f"{val:.2f}"
-                    daily_berjalan_list.append(f"{col}: {disp_val_b} (DTD: {dtd:+.2f}%, {ytd_str})")
-                    disp_val_r = f"{avg_current:,.2f}" if avg_current > 10 else f"{avg_current:.2f}"
-                    daily_rata_list.append(f"{col}: Avg {current_year} = {disp_val_r} (Perubahan vs Avg 2025: {avg_growth:+.2f}%)")
-
-                    if "Berjalan" in selected_daily_view:
-                        disp_val = disp_val_b
-                        color_1 = "badge-red" if dtd < 0 else "badge-green"
-                        color_2 = "badge-red" if ytd < 0 else "badge-green"
-                        badge_1_str, badge_2_str = f"DTD: {dtd:+.2f}%", ytd_str
-                        subtitle_str = f"Data Spot: {date_str}"
-                        daily_summary_list.append(f"{col}: {disp_val_b} (DTD: {dtd:+.2f}%)")
-                    else:
-                        disp_val = disp_val_r
-                        color_1 = "badge-neutral" 
-                        color_2 = "badge-red" if avg_growth < 0 else "badge-green"
-                        avg_prev_disp = f"{avg_prev:,.2f}" if avg_prev > 10 else f"{avg_prev:.2f}"
-                        badge_1_str, badge_2_str = f"Avg '25: {avg_prev_disp}", f"Δ {avg_growth:+.2f}%"
-                        subtitle_str = f"Rata-rata YTD {current_year}"
-                        daily_summary_list.append(f"{col}: Avg {current_year} = {disp_val_r} (Perubahan vs Avg 2025: {avg_growth:+.2f}%)")
-
-                    html = f"""
-                    <div class="glass-card" style="padding: 15px; margin-bottom: 10px;">
-                        <div class="card-title">{col}</div>
-                        <div class="card-value">{disp_val}</div>
-                        <div style="font-size: 11px; color: #666; margin-bottom: 8px; font-style: italic;">{subtitle_str}</div>
-                        <span class="badge {color_1}">{badge_1_str}</span>
-                        <span class="badge {color_2}">{badge_2_str}</span>
-                    </div>
-                    """
-                    with cols[idx % 4]: st.markdown(html, unsafe_allow_html=True)
-                    idx += 1
-
-            # --- Tampilkan UI Kelompok 1: Pasar Keuangan ---
-            st.markdown("##### 🏦 Pasar Keuangan")
-            render_cards(group_keuangan)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            # --- Tampilkan UI Kelompok 2: Komoditas ---
-            st.markdown("##### 🛢️ Komoditas")
-            render_cards(group_komoditas)
+        # === INI BARIS YANG SEMPAT HILANG MIN ===
+        indicator_cols = [c for c in df_makro.columns if c != 'Tanggal']
+        
+        monthly_summary_list = [] 
+        monthly_summary_str = "Data bulanan tidak tersedia."
+        
+        # --- Mengelompokkan Indikator Bulanan ---
+        group_riil = ['PMI Manufaktur Negara Berkembang', 'Penjualan Mobil', 'Penjualan Motor', 'Penjualan semen', 'Indeks Keyakinan Konsumen', 'Inflasi']
+        group_eksternal = ['Ekspor Barang', 'Impor Barang Konsumsi', 'Impor Bahan Baku', 'Impor Barang Modal']
+        group_moneter = ['Jumlah Uang Yang Beredar', 'Kredit Perbankan', 'Suku Bunga', 'Nilai Tukar terhadap Dolar AS']
+        
+        def render_monthly_cards(indicators_list):
+            cols = st.columns(4)
+            idx = 0
+            for col in indicators_list:
+                if col not in df_makro.columns: continue
+                valid_series = df_makro[['Tanggal', col]].dropna()
+                if valid_series.empty: continue
+                latest_row = valid_series.iloc[-1]
+                val = latest_row[col]
+                date_obj = latest_row['Tanggal']
+                date_str = date_obj.strftime("%b %Y")
                 
-            if daily_summary_list: daily_summary_str = " | ".join(daily_summary_list)
-            
-        st.session_state['mac_daily'] = daily_summary_str
+                if len(valid_series) > 1:
+                    prev_row = valid_series.iloc[-2]
+                    val_prev_mtm = prev_row[col]
+                    mtm_diff = val - val_prev_mtm
+                    mtm_pct = (mtm_diff / abs(val_prev_mtm)) * 100 if val_prev_mtm != 0 else 0
+                else: mtm_diff, mtm_pct = 0, 0
+
+                target_date_yoy = date_obj - pd.DateOffset(years=1)
+                row_yoy = df_makro[(df_makro['Tanggal'].dt.year == target_date_yoy.year) & (df_makro['Tanggal'].dt.month == target_date_yoy.month)]
+                
+                if not row_yoy.empty and pd.notna(row_yoy.iloc[0][col]):
+                    val_yoy = row_yoy.iloc[0][col]
+                    yoy_diff = val - val_yoy
+                    yoy_pct = (yoy_diff / abs(val_yoy)) * 100 if val_yoy != 0 else 0
+                    has_yoy = True
+                else: yoy_diff, yoy_pct, has_yoy = 0, 0, False
+
+                rule_naik_bagus = ATURAN_WARNA.get(col, True)
+                is_level_indicator = any(k in col for k in ["PMI", "Inflasi", "Suku Bunga", "Nilai Tukar", "Indeks Keyakinan Konsumen"])
+
+                if is_level_indicator:
+                    disp = f"{val:,.2f}" if val > 1000 else f"{val:.2f}"
+                    badge_1 = f"MtM: {mtm_diff:+.2f}"
+                    badge_2 = f"YoY: {yoy_diff:+.2f}" if has_yoy else "YoY: -"
+                    is_bad_mtm = (rule_naik_bagus and mtm_diff < 0) or (not rule_naik_bagus and mtm_diff > 0)
+                    is_bad_yoy = (rule_naik_bagus and yoy_diff < 0) or (not rule_naik_bagus and yoy_diff > 0)
+                else:
+                    disp = f"{val:,.2f}"
+                    badge_1 = f"MtM: {mtm_pct:+.2f}%"
+                    badge_2 = f"YoY: {yoy_pct:+.2f}%" if has_yoy else "YoY: -"
+                    is_bad_mtm = (rule_naik_bagus and mtm_pct < 0) or (not rule_naik_bagus and mtm_pct > 0)
+                    is_bad_yoy = (rule_naik_bagus and yoy_pct < 0) or (not rule_naik_bagus and yoy_pct > 0)
+
+                if "PMI" in col and val < 50: is_bad_mtm, is_bad_yoy = True, True
+                color_1 = "badge-red" if is_bad_mtm else "badge-green"
+                color_2 = "badge-red" if is_bad_yoy else "badge-green"
+                status_mtm = "Melemah" if is_bad_mtm else "Membaik"
+                status_yoy = "Melemah" if is_bad_yoy else "Membaik"
+                monthly_summary_list.append(f"[{col}] Data: {disp} | {badge_1} ({status_mtm}) | {badge_2} ({status_yoy})")
+
+                html = f"""
+                <div class="glass-card" style="padding: 15px; margin-bottom: 10px;">
+                    <div class="card-title">{col}</div>
+                    <div class="card-value">{disp}</div>
+                    <div style="font-size: 11px; color: #666; margin-bottom: 8px; font-style: italic;">Data: {date_str}</div>
+                    <span class="badge {color_1}">{badge_1}</span>
+                    <span class="badge {color_2}">{badge_2}</span>
+                </div>
+                """
+                with cols[idx%4]: st.markdown(html, unsafe_allow_html=True)
+                idx += 1
+
+        # --- Tampilkan UI Kelompok 1: Sektor Riil ---
+        st.markdown("##### 🏭 Sektor Riil & Daya Beli")
+        render_monthly_cards(group_riil)
+        
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- Tampilkan UI Kelompok 2: Eksternal ---
+        st.markdown("##### 🚢 Sektor Eksternal (Ekspor & Impor)")
+        render_monthly_cards(group_eksternal)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- Tampilkan UI Kelompok 3: Moneter & Keuangan ---
+        st.markdown("##### 🏦 Sektor Moneter & Keuangan")
+        render_monthly_cards(group_moneter)
+        
+        # Render otomatis jika ada indikator baru di excel yang belum terpetakan
+        all_grouped = set(group_riil + group_eksternal + group_moneter)
+        remaining_cols = [c for c in df_makro.columns if c != 'Tanggal' and c not in all_grouped]
+        if remaining_cols:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("##### 📌 Indikator Lainnya")
+            render_monthly_cards(remaining_cols)
+            
+        if monthly_summary_list: monthly_summary_str = "\n".join(monthly_summary_list)
+        st.session_state['mac_monthly'] = monthly_summary_str
 
         ATURAN_WARNA = {
             'PMI Manufaktur Negara Berkembang': True, 'Jumlah Uang Yang Beredar': True, 
