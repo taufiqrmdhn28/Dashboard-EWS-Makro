@@ -49,7 +49,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# === DATA BASELINE TERBARU DARI USER ===
 SCEN = {
     "med": {
         "nt":         {2026: 16700, 2027: 17100, 2028: 16300, 2029: 16200},
@@ -130,7 +129,7 @@ EL = {
     "bop_svc_nt":      0.05,   "bop_prim_nt":     -0.03,
     "share_exp_migas": 0.06,   "share_imp_migas":  0.16,
     
-    # Transmisi GDP (PDB Turun saat Depresiasi/ICP Naik)
+    # Transmisi GDP
     "gexp_nt":         0.15,   "gimp_nt":         -0.10, 
     "cons_nt":        -0.10,   "inv_nt":          -0.06, 
     "gexp_oil":        0.025,  "gimp_oil":         0.018,
@@ -172,14 +171,23 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
     s["exp"]        = exp_migas * (1 + EL["bop_exp_oil"] * dOil) + exp_non * (1 + EL["bop_exp_nt"] * dNT)
     s["imp"]        = imp_migas * (1 + EL["bop_imp_oil"] * dOil) + imp_non * (1 + EL["bop_imp_nt"] * dNT)
     s["tradebal"]   = s["exp"] + s["imp"]
+    
     s["svcbal"]     = b["svcbal"]  * (1 + EL["bop_svc_nt"]  * dNT)
     s["primbal"]    = b["primbal"] * (1 + EL["bop_prim_nt"] * dNT)
     s["secbal"]     = b["secbal"]
     s["capbal"]     = b["capbal"]
     s["finbal"]     = b["finbal"]
-    s["ca"]         = s["tradebal"] + s["svcbal"] + s["primbal"] + s["secbal"]
-    s["total"]      = s["ca"] + s["capbal"] + s["finbal"]
-    s["reserves"]   = b["reserves"] + (s["total"] - b["total"])
+    
+    # Kalkulasi Delta untuk BOP agar 100% konsisten jika baseline user ada selisih internal
+    delta_trade = s["tradebal"] - b["tradebal"]
+    delta_svc = s["svcbal"] - b["svcbal"]
+    delta_prim = s["primbal"] - b["primbal"]
+    s["ca"]         = b["ca"] + delta_trade + delta_svc + delta_prim
+    
+    delta_ca = s["ca"] - b["ca"]
+    s["total"]      = b["total"] + delta_ca
+    s["reserves"]   = b["reserves"] + delta_ca
+    
     s["gdpnom_usd"] = b["gdpnom_usd"] * (b["nt"] / nt)
     s["capdb"]      = (s["ca"] / s["gdpnom_usd"]) * 100
 
@@ -240,7 +248,7 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
 
     s["rev"]    = b["rev"]   + dRevTotal
     s["bel"]    = b["bel"]   + dBelTotal
-    s["def"]    = s["rev"]   - s["bel"]
+    s["def"]    = b["def"]   + dRevTotal - dBelTotal # Ditambahkan secara selisih
     s["defpdb"] = (s["def"]  / b["pdb"]) * 100
     s["sube"]   = b["sube"]  + dSubsE
     s["bunga"]  = b["bunga"] + dBunga
@@ -262,29 +270,52 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
 
     return b, s
 
-# --- Helper Chart ---
+# --- Helper Chart Sektor Eksternal ---
 _BASE_LAYOUT = dict(
-    paper_bgcolor="white", plot_bgcolor="#f8f9fa",
+    paper_bgcolor="white",
+    plot_bgcolor="#f8f9fa",
     font=dict(family="monospace", size=11, color="#4b5563"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font_size=10),
-    margin=dict(l=40, r=20, t=50, b=40), height=270,
-    xaxis=dict(gridcolor="#e5e7eb", showgrid=True), yaxis=dict(gridcolor="#e5e7eb", showgrid=True),
+    legend=dict(
+        orientation="h", yanchor="bottom", y=1.02,
+        xanchor="right", x=1, font_size=10,
+    ),
+    margin=dict(l=40, r=20, t=50, b=40),
+    height=270,
+    xaxis=dict(gridcolor="#e5e7eb", showgrid=True),
+    yaxis=dict(gridcolor="#e5e7eb", showgrid=True),
 )
 
 def fig_layout(title: str, barmode: str = None, **kwargs) -> dict:
     layout = {**_BASE_LAYOUT, "title": dict(text=title, font=dict(size=13)), **kwargs}
-    if barmode: layout["barmode"] = barmode
+    if barmode:
+        layout["barmode"] = barmode
     return layout
 
-def bar_trace(name, x, y, color, opacity=0.75): return go.Bar(name=name, x=x, y=y, marker_color=color, marker_line_width=0, opacity=opacity)
-def line_trace(name, x, y, color, fill=None, fillcolor=None, width=2, size=6): return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=color, width=width), marker=dict(size=size, color=color), fill=fill, fillcolor=fillcolor)
-def line_base_trace(name, x, y): return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=C["gray"], dash="dash", width=1.5), marker=dict(size=4, color=C["gray"]))
-def dot_trace(name, x, y): return go.Scatter(name=name, x=x, y=y, mode="markers", marker=dict(size=11, color=C["amber"], line=dict(color="white", width=2)))
-def delta_color(val: float) -> str: return "green" if val > 0.005 else "red" if val < -0.005 else "gray"
-def metric_delta_color(val: float) -> str: return "normal" if delta_color(val) == "green" else "inverse" if delta_color(val) == "red" else "off"
+def bar_trace(name, x, y, color, opacity=0.75):
+    return go.Bar(name=name, x=x, y=y, marker_color=color, marker_line_width=0, opacity=opacity)
+
+def line_trace(name, x, y, color, fill=None, fillcolor=None, width=2, size=6):
+    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=color, width=width), marker=dict(size=size, color=color), fill=fill, fillcolor=fillcolor)
+
+def line_base_trace(name, x, y):
+    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=C["gray"], dash="dash", width=1.5), marker=dict(size=4, color=C["gray"]))
+
+def dot_trace(name, x, y):
+    return go.Scatter(name=name, x=x, y=y, mode="markers", marker=dict(size=11, color=C["amber"], line=dict(color="white", width=2)))
+
+def delta_color(val: float) -> str:
+    if val > 0.005:   return "green"
+    if val < -0.005:  return "red"
+    return "gray"
+
+def metric_delta_color(val: float) -> str:
+    dc = delta_color(val)
+    if dc == "green": return "normal"
+    if dc == "red":   return "inverse"
+    return "off"
 
 # ==========================================
-# 3. DATA LOADING & DFM ENGINE
+# 2. DATA LOADING & DFM ENGINE (MAKRO NASIONAL)
 # ==========================================
 @st.cache_data
 def load_data():
@@ -381,7 +412,7 @@ def run_full_dfm_replication():
         data_full.index = pd.to_datetime(data_full.index)
         data_full_resampled = data_full.resample('MS').first() 
         target_var = 'RGDP_growth'
-        
+
         def get_actual_value(ref_period):
             target_date = ref_period.to_timestamp(how='end').replace(day=1).normalize()
             if target_date in data_full.index:
@@ -466,6 +497,7 @@ st.markdown("""
     font-size: 13px; font-weight: 600; margin-bottom: 14px;
 }
 div[data-testid="metric-container"] > div { font-family: monospace; }
+/* TAMBAHAN UNTUK MENU ATAS HORIZONTAL */
 div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify-content: center; background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb;}
 </style>
 """, unsafe_allow_html=True)
@@ -732,6 +764,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
         
+        # === TOMBOL DOWNLOAD DFM NOWCASTING ===
         if not df_full_results.empty:
             import io
             buffer = io.BytesIO()
@@ -1077,6 +1110,9 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
 
     for y in YEARS:
         bb, ss = simulate_eksternal(nt, oil, y, scen)
+        if y == yr: 
+            b_sim, s_sim = bb, ss
+            
         for k, bval, sval, dec in [
             ("ca",       bb["ca"],       ss["ca"],       2),
             ("exp",      bb["exp"],      ss["exp"],      1),
@@ -1195,6 +1231,8 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         )
 
     with tab_gdp:
+        
+        # KPI
         gdp_kpis = [
             ("🟢 PDB Growth",     f"{s_sim['gdp']:.2f}%",  s_sim["gdp"]-b_sim["gdp"],  " pp"),
             ("🔵 Konsumsi RT",    f"{s_sim['cons']:.2f}%", s_sim["cons"]-b_sim["cons"]," pp"),
@@ -1353,7 +1391,8 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             ]
             fig = go.Figure([
                 bar_trace("Baseline", YL, R["def"]["b"], C["purple"], opacity=0.35),
-                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0),
+                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"],
+                       marker_color=def_colors, marker_line_width=0),
             ])
             fig.update_layout(**fig_layout("Defisit APBN (Rp T)", barmode="group"))
             st.plotly_chart(fig, width="stretch")
@@ -1375,11 +1414,15 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 go.Scatter(
                     x=[f"${ic}" for ic in icp_range], y=def_sens,
                     mode="lines", name="Defisit (Rp T)",
-                    line=dict(color=C["purple"], width=2), fill="tozeroy", fillcolor="rgba(124,58,237,0.08)"
+                    line=dict(color=C["purple"], width=2),
+                    fill="tozeroy", fillcolor="rgba(124,58,237,0.08)",
                 ),
-                dot_trace("Posisi kini", [f"${oil}"], [round(s_sim["def"], 0)])
+                dot_trace("Posisi kini", [f"${oil}"], [round(s_sim["def"], 0)]),
             ])
-            fig.update_layout(**fig_layout("Sensitivitas Defisit vs ICP", xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)"))
+            fig.update_layout(**fig_layout(
+                "Sensitivitas Defisit vs ICP",
+                xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)",
+            ))
             st.plotly_chart(fig, width="stretch")
 
         c4, c5 = st.columns(2)
@@ -1438,10 +1481,14 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 ],
             }), hide_index=True, width="stretch")
 
+    # -------------------------------------------------------------------------
+    # TAB TABEL LENGKAP
+    # -------------------------------------------------------------------------
     with tab_table:
         st.markdown("#### Tabel Lengkap BOP, GDP & APBN — Baseline vs Simulasi")
 
         table_def = [
+            # (label,                        key_b,       key_s,       dec, satuan)
             ("I. Transaksi Berjalan",          "ca",        "ca",        2,   "Miliar USD"),
             ("  Neraca Barang",                "tradebal",  "tradebal",  2,   "Miliar USD"),
             ("    Ekspor (fob)",               "exp",       "exp",       1,   "Miliar USD"),
@@ -1486,7 +1533,21 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 "Satuan":    unit,
             })
 
-        st.dataframe(pd.DataFrame(rows_tbl), hide_index=True, use_container_width=True, height=720)
+        st.dataframe(
+            pd.DataFrame(rows_tbl),
+            hide_index=True,
+            width="stretch",
+            height=720,
+        )
+
+        st.caption(
+            "Baseline = skenario Med/High dari Excel (sheet 3.1 BOP, 2.1 GDP Exp Riil, 4.1 APBN). "
+            "Simulasi = baseline + efek elastisitas parsial dari deviasi NT & ICP.\n"
+            "GDP: komponen aktif berubah Ekspor, Impor, Konsumsi & Investasi.\n"
+            "APBN: penerimaan migas & PNBP SDA sensitif ICP; subsidi energi naik saat ICP naik dan NT melemah. "
+            "Defisit maks -3% PDB (UU).\n"
+            "BOP: Miliar USD | GDP: % | APBN: Rp Triliun."
+        )
 
 # =========================================================================
 # MODUL 3: EKONOMI DAERAH (WIP)
@@ -1565,7 +1626,7 @@ ATURAN MUTLAK DAN SANGAT PENTING:
 1. JANGAN PERNAH memberikan kalimat pembuka atau basa-basi (seperti "Baik, berikut adalah draf...", "Sebagai Ahli Utama...", atau "Ini adalah hasilnya").
 2. Tuliskan jawaban ANDA LANGSUNG dimulai dengan "### [JUDUL EXECUTIVE BRIEF]".
 3. Gunakan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, dan tegas.
-4. Fokus pada penyelesaian masalah (problem-solving) dan antisipasi risiko ke depan.
+4. PASTIKAN laporan ditulis LENGKAP dari Bagian 1 sampai Bagian 3 selesai. JANGAN berhenti di tengah jalan.
 
 =====================
 DATA & EVIDENCE MAKRO-EKSTERNAL (EARLY WARNING)
@@ -1594,6 +1655,7 @@ STRUKTUR EXECUTIVE BRIEF:
 * **A. Jangka Pendek (Mitigasi & Stabilisasi):** (Tindakan taktis dan intervensi segera untuk meredam syok eksternal, menjaga target PDB tahun berjalan, stabilisasi harga/inflasi mikro, intervensi pasar, subsidi, dan menjaga batas defisit fiskal).
 * **B. Jangka Menengah & Panjang (Reformasi Struktural):** (Kebijakan struktural untuk memperkuat fundamental ekonomi makro, resiliensi rantai pasok/industrialisasi, ketahanan energi, dan penguatan kemandirian sektor unggulan di tingkat daerah).
 """
+                        # MENGGUNAKAN STREAM=TRUE AGAR ANTI-TIMEOUT DAN ANTI-KEPOTONG
                         res = model.generate_content(
                             prompt, 
                             generation_config=generation_config,
