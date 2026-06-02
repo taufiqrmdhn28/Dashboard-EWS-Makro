@@ -1526,17 +1526,18 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                         ]
                         model = genai.GenerativeModel(model_name)
                         
-                        prompt = f"""
+                       prompt = f"""
 Anda adalah Perencana Pembangunan Nasional Ahli Utama di Direktorat Perencanaan Ekonomi Makro dan Pengembangan Model Pembangunan, Kementerian PPN/Bappenas. 
-Tugas Anda adalah menulis Executive Brief untuk dilaporkan kepada Menteri.
+Tugas Anda adalah menulis Executive Brief dari "Dashboard Macro Early Warning System" untuk dilaporkan kepada Menteri PPN/Kepala Bappenas.
 
 ATURAN MUTLAK DAN SANGAT PENTING:
-1. JANGAN PERNAH memberikan kalimat pembuka percakapan seperti "Baik, berikut adalah draf...", "Sebagai Ahli Utama...", atau "Ini adalah hasilnya".
-2. LANGSUNG mulai teks Anda dengan Judul (Heading).
+1. JANGAN PERNAH memberikan kalimat pembuka atau basa-basi (seperti "Baik, berikut adalah draf...", "Sebagai Ahli Utama...", atau "Ini adalah hasilnya").
+2. LANGSUNG mulai teks Anda dengan Judul (Heading Utama).
 3. Gunakan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, dan tegas.
+4. Fokus pada penyelesaian masalah (problem-solving) dan antisipasi risiko ke depan.
 
 =====================
-DATA & EVIDENCE MAKRO-EKSTERNAL
+DATA & EVIDENCE MAKRO-EKSTERNAL (EARLY WARNING)
 =====================
 Fokus Indikator: {mac_view}
 Target PDB: {mac_target}% | Proyeksi DFM: {mac_avg:.2f}%
@@ -1549,18 +1550,18 @@ Dampak Skenario Eksternal: PDB {ext_gdp_drop:+.2f} pp, Defisit APBN {ext_def:+.2
 =====================
 STRUKTUR EXECUTIVE BRIEF:
 =====================
-### [BUAT JUDUL EXECUTIVE BRIEF YANG TEGAS DI SINI]
+### [BUAT JUDUL EXECUTIVE BRIEF YANG MENCERMINKAN STATUS EARLY WARNING SAAT INI]
 
-**1. POSISI STRATEGIS BAPPENAS**
-(Deklarasikan stance Bappenas sebagai clearing house kebijakan dalam menyikapi dinamika makro saat ini, tekanan sektor eksternal dan fiskal. Harus mencerminkan helicopter view).
+**1. ASESMEN RISIKO DAN POSISI STRATEGIS BAPPENAS**
+(Analisis perkembangan terkini dari makro nasional dan hasil simulasi guncangan eksternal (Rupiah & Minyak). Berdasarkan data early warning di atas, deklarasikan posisi/stance Bappenas dengan tegas: apakah situasi ini terkendali, waspada, atau krisis? Apa *root cause* permasalahannya?).
 
-**2. SINTESIS KONDISI EKONOMI**
-(Buat narasi padat yang menghubungkan anomali makro domestik dengan potensi pukulan dari guncangan eksternal (Rupiah & Minyak). Jelaskan maknanya secara ekonomi politik tanpa mengulang-ulang angka mentah).
+**2. STRATEGI DAN SOLUSI KOMPREHENSIF**
+(Jabarkan grand strategy atau solusi menyeluruh dari Bappenas untuk menyelesaikan permasalahan yang teridentifikasi di poin 1. Jelaskan bagaimana Bappenas akan mengorkestrasi penyelesaian masalah ini secara lintas sektor).
 
-**3. ARAHAN KEBIJAKAN STRATEGIS LINTAS K/L**
-(Berikan rekomendasi kebijakan agregat untuk diorkestrasikan kepada seluruh Kementerian/Lembaga terkait, bagi menjadi 2 aspek utama):
-* **Aspek Makro:** (Fokus pada orkestrasi bauran kebijakan fiskal-moneter, penjagaan target pertumbuhan, manajemen defisit, dan stabilitas nilai tukar secara agregat).
-* **Aspek Mikro & Kewilayahan:** (Fokus pada intervensi sektoral, rantai pasok industri, tata niaga, pengendalian inflasi di daerah, dan proteksi daya beli masyarakat).
+**3. REKOMENDASI KEBIJAKAN LINTAS K/L**
+(Berikan arahan kebijakan yang jelas dan *actionable* untuk diimplementasikan oleh Kementerian/Lembaga terkait. Bagi secara tegas berdasarkan horizon waktu):
+* **A. Jangka Pendek (Mitigasi & Stabilisasi):** (Tindakan taktis dan intervensi segera untuk meredam syok eksternal, menjaga target PDB tahun berjalan, stabilisasi harga/inflasi mikro, intervensi pasar, subsidi, dan menjaga batas defisit fiskal).
+* **B. Jangka Menengah & Panjang (Reformasi Struktural):** (Kebijakan struktural untuk memperkuat fundamental ekonomi makro, resiliensi rantai pasok/industrialisasi, ketahanan energi, dan penguatan kemandirian sektor unggulan di tingkat daerah).
 """
                         res = model.generate_content(
                             prompt, 
