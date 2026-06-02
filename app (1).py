@@ -49,6 +49,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# === DATA BASELINE TERBARU DARI USER ===
 SCEN = {
     "med": {
         "nt":         {2026: 16700, 2027: 17100, 2028: 16300, 2029: 16200},
@@ -380,7 +381,7 @@ def run_full_dfm_replication():
         data_full.index = pd.to_datetime(data_full.index)
         data_full_resampled = data_full.resample('MS').first() 
         target_var = 'RGDP_growth'
-
+        
         def get_actual_value(ref_period):
             target_date = ref_period.to_timestamp(how='end').replace(day=1).normalize()
             if target_date in data_full.index:
@@ -465,7 +466,6 @@ st.markdown("""
     font-size: 13px; font-weight: 600; margin-bottom: 14px;
 }
 div[data-testid="metric-container"] > div { font-family: monospace; }
-/* TAMBAHAN UNTUK MENU ATAS HORIZONTAL */
 div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify-content: center; background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb;}
 </style>
 """, unsafe_allow_html=True)
@@ -732,7 +732,6 @@ if main_menu == "📊 Makro Nasional (DFM)":
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
         
-        # === TOMBOL DOWNLOAD DFM NOWCASTING ===
         if not df_full_results.empty:
             import io
             buffer = io.BytesIO()
@@ -1117,18 +1116,23 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         cols = st.columns(6)
         for col, (lbl, val, unit, dv, sfx) in zip(cols, bop_kpis):
             with col:
-                st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}", delta_color=metric_delta_color(dv))
+                st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}",
+                          delta_color=metric_delta_color(dv))
 
         c1, c2, c3 = st.columns(3)
 
         with c1:
-            ca_bar_colors = ["rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)" for v in R["ca"]["s"]]
+            ca_bar_colors = [
+                "rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)"
+                for v in R["ca"]["s"]
+            ]
             fig = go.Figure([
                 bar_trace("Baseline", YL, R["ca"]["b"], C["blue"], opacity=0.35),
-                go.Bar(name="Simulasi", x=YL, y=R["ca"]["s"], marker_color=ca_bar_colors, marker_line_width=0),
+                go.Bar(name="Simulasi", x=YL, y=R["ca"]["s"],
+                       marker_color=ca_bar_colors, marker_line_width=0),
             ])
             fig.update_layout(**fig_layout("Transaksi Berjalan (Miliar USD)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with c2:
             fig = go.Figure([
@@ -1138,15 +1142,16 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 bar_trace("Imp Simulasi", YL, R["imp"]["s"], C["red2"], opacity=0.75),
             ])
             fig.update_layout(**fig_layout("Ekspor vs Impor Barang (Miliar USD)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with c3:
             fig = go.Figure([
                 line_base_trace("Baseline", YL, R["reserves"]["b"]),
-                line_trace("Simulasi", YL, R["reserves"]["s"], C["orange"], fill="tozeroy", fillcolor="rgba(234,88,12,0.08)"),
+                line_trace("Simulasi", YL, R["reserves"]["s"], C["orange"],
+                           fill="tozeroy", fillcolor="rgba(234,88,12,0.08)"),
             ])
             fig.update_layout(**fig_layout("Cadangan Devisa (Miliar USD)"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         c4, c5 = st.columns(2)
 
@@ -1162,7 +1167,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 bar_trace("Pend. Sekunder", YL, sec_b,  C["green"],  opacity=0.75),
             ])
             fig.update_layout(**fig_layout("Komponen Neraca Berjalan (Miliar USD)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with c5:
             nt_range = list(range(12_000, 26_500, 500))
@@ -1180,7 +1185,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 "Sensitivitas CA vs Nilai Tukar",
                 xaxis_title="NT (ribu Rp)", yaxis_title="CA (Miliar USD)",
             ))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         st.info(
             "📌 **Catatan:** Data BOP dari sheet 3.1 BOP. Med 2026: CA -$4,5 Miliar USD, Ekspor $302 Miliar USD, Caddev $161 Miliar USD. "
@@ -1211,7 +1216,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 line_trace("Simulasi", YL, R["gdp"]["s"], C["green"], fill="tozeroy", fillcolor="rgba(22,163,74,0.08)"),
             ])
             fig.update_layout(**fig_layout("Pertumbuhan PDB Riil (%)"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with c2:
             fig = go.Figure([
@@ -1221,7 +1226,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 bar_trace("Imp B&J Simulasi", YL, R["gimp"]["s"], C["red2"], opacity=0.75),
             ])
             fig.update_layout(**fig_layout("Ekspor & Impor Riil B&J (%)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with c3:
             nt_range2 = list(range(12_000, 26_500, 500))
@@ -1236,7 +1241,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 dot_trace("Posisi kini", [nt / 1000], [round(s_sim["gdp"], 2)]),
             ])
             fig.update_layout(**fig_layout("Sensitivitas PDB vs Nilai Tukar", xaxis_title="NT (ribu Rp)", yaxis_title="PDB Growth (%)"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         tx = s_sim["tx"]
         st.markdown("#### 🔴 MEKANISME TRANSMISI: NILAI TUKAR & HARGA MINYAK → PDB")
@@ -1321,17 +1326,20 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         ]
         cols = st.columns(5)
         for col, (lbl, val, dv, sfx) in zip(cols, apbn_kpis):
-            with col: st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}", delta_color=metric_delta_color(dv))
+            with col:
+                st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}",
+                          delta_color=metric_delta_color(dv))
 
+        # Fiscal bar
         st.markdown("##### 📊 Posisi Defisit APBN vs Batas 3% PDB")
         limit = 3.0
         col_b, col_s = st.columns(2)
         with col_b:
-            alert_b = "🔴" if abs(b_sim['defpdb']) > limit else "🟢"
+            alert_b = "🔴" if abs(b_sim["defpdb"]) > limit else "🟢"
             st.markdown(f"**Baseline {alert_b}:** `{b_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(b_sim["defpdb"]) / limit, 1.0))
         with col_s:
-            alert_s = "🔴" if abs(s_sim['defpdb']) > limit else "🟢"
+            alert_s = "🔴" if abs(s_sim["defpdb"]) > limit else "🟢"
             st.markdown(f"**Simulasi {alert_s}:** `{s_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(s_sim["defpdb"]) / limit, 1.0))
         st.caption("Batas legal: -3.0% PDB (UU Keuangan Negara)")
@@ -1339,23 +1347,26 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         c1, c2, c3 = st.columns(3)
 
         with c1:
-            def_colors = ["rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)" for v in R["def"]["s"]]
+            def_colors = [
+                "rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)"
+                for v in R["def"]["s"]
+            ]
             fig = go.Figure([
                 bar_trace("Baseline", YL, R["def"]["b"], C["purple"], opacity=0.35),
-                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0)
+                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0),
             ])
             fig.update_layout(**fig_layout("Defisit APBN (Rp T)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with c2:
             fig = go.Figure([
                 bar_trace("Pendapatan Baseline", YL, R["rev"]["b"], C["blue"], opacity=0.35),
                 bar_trace("Pendapatan Simulasi", YL, R["rev"]["s"], C["teal"], opacity=0.85),
                 bar_trace("Belanja Baseline",    YL, R["bel"]["b"], C["red"],  opacity=0.25),
-                bar_trace("Belanja Simulasi",    YL, R["bel"]["s"], C["red2"], opacity=0.75)
+                bar_trace("Belanja Simulasi",    YL, R["bel"]["s"], C["red2"], opacity=0.75),
             ])
             fig.update_layout(**fig_layout("Pendapatan vs Belanja (Rp T)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with c3:
             icp_range = list(range(30, 135, 5))
@@ -1369,44 +1380,63 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 dot_trace("Posisi kini", [f"${oil}"], [round(s_sim["def"], 0)])
             ])
             fig.update_layout(**fig_layout("Sensitivitas Defisit vs ICP", xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         c4, c5 = st.columns(2)
 
         with c4:
             fig = go.Figure([
-                bar_trace("Subsidi Energi Baseline", YL, R["sube"]["b"],  C["red"], opacity=0.35),
-                bar_trace("Subsidi Energi Simulasi", YL, R["sube"]["s"],  C["red2"], opacity=0.85),
-                bar_trace("Bunga Utang Baseline", YL, R["bunga"]["b"], C["orange"], opacity=0.35),
-                bar_trace("Bunga Utang Simulasi", YL, R["bunga"]["s"], C["orange2"], opacity=0.85)
+                bar_trace("Subsidi Energi Baseline", YL, R["sube"]["b"],  C["red"],     opacity=0.35),
+                bar_trace("Subsidi Energi Simulasi", YL, R["sube"]["s"],  C["red2"],    opacity=0.85),
+                bar_trace("Bunga Utang Baseline",    YL, R["bunga"]["b"], C["orange"],  opacity=0.35),
+                bar_trace("Bunga Utang Simulasi",    YL, R["bunga"]["s"], C["orange2"], opacity=0.85),
             ])
             fig.update_layout(**fig_layout("Komponen Belanja Utama (Rp T)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         with c5:
             fig = go.Figure([
                 bar_trace("Pajak Baseline", YL, R["pajak"]["b"], C["blue"], opacity=0.35),
-                bar_trace("Pajak Simulasi", YL, R["pajak"]["s"], C["teal"], opacity=0.85)
+                bar_trace("Pajak Simulasi", YL, R["pajak"]["s"], C["teal"], opacity=0.85),
             ])
             fig.update_layout(**fig_layout("Komponen Penerimaan Pajak (Rp T)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
+        # Tabel transmisi APBN
         ax = s_sim["ax"]
         col_rev, col_bel = st.columns(2)
 
         with col_rev:
             st.markdown("##### 🔵 Dampak ke Sisi Pendapatan")
             st.dataframe(pd.DataFrame({
-                "Komponen": ["PPh Migas (ICP sensitif)", "PNBP SDA Migas (ICP sensitif)", "Bea Keluar (NT + komoditas)", "Delta Total Pendapatan"],
-                "Delta (Rp T)": [round(ax["pph"],2), round(ax["sda"],2), round(ax["bea"],2), round(ax["rev"],2)],
-            }), hide_index=True, use_container_width=True)
+                "Komponen": [
+                    "PPh Migas (ICP sensitif)",
+                    "PNBP SDA Migas (ICP sensitif)",
+                    "Bea Keluar (NT + komoditas)",
+                    "Delta Total Pendapatan",
+                ],
+                "Delta (Rp T)": [
+                    round(ax["pph"],   2),
+                    round(ax["sda"],   2),
+                    round(ax["bea"],   2),
+                    round(ax["rev"],   2),
+                ],
+            }), hide_index=True, width="stretch")
 
         with col_bel:
             st.markdown("##### 🔴 Tekanan Sisi Belanja")
             st.dataframe(pd.DataFrame({
-                "Komponen": ["Subsidi Energi (ICP naik + NT melemah)", "Bunga Utang Valas (NT melemah)", "Delta Total Belanja"],
-                "Delta (Rp T)": [round(ax["sube"],2), round(ax["bunga"],2), round(ax["bel"],2)],
-            }), hide_index=True, use_container_width=True)
+                "Komponen": [
+                    "Subsidi Energi (ICP naik + NT melemah)",
+                    "Bunga Utang Valas (NT melemah)",
+                    "Delta Total Belanja",
+                ],
+                "Delta (Rp T)": [
+                    round(ax["sube"],  2),
+                    round(ax["bunga"], 2),
+                    round(ax["bel"],   2),
+                ],
+            }), hide_index=True, width="stretch")
 
     with tab_table:
         st.markdown("#### Tabel Lengkap BOP, GDP & APBN — Baseline vs Simulasi")
@@ -1478,7 +1508,7 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
     st.markdown("### 🧠 AI Policy Synthesis & Executive Brief")
     st.markdown("Modul ini mensintesis data dari seluruh *dashboard* untuk memproduksi rumusan kebijakan lintas sektoral secara makro dan mikro komprehensif.")
 
-    # Data fallback/default diinisialisasi secara aman, tanpa pesan error peringatan.
+    # Data fallback/default diinisialisasi secara aman
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     
     mac_view = st.session_state.get('mac_view', '2026')
@@ -1505,19 +1535,20 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
     if signature not in st.session_state.policy_cache:
         if st.button("Generate Sintesis Kebijakan (AI Bappenas)", type="primary"):
             genai.configure(api_key=USER_API_KEY)
-            with st.spinner('AI sedang merumuskan arahan strategis The Bappenas Way...'):
+            with st.spinner('AI sedang merumuskan arahan strategis The Bappenas Way (Menggunakan mode Streaming agar tidak terpotong)...'):
                 try:
                     avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     model_name = next((m for m in avail if 'flash' in m), avail[0] if avail else None)
 
-                    if not model_name: st.error("Gagal mendeteksi model. Cek API Key.")
+                    if not model_name: 
+                        st.error("Gagal mendeteksi model. Cek API Key.")
                     else:
                         generation_config = genai.types.GenerationConfig(
                             temperature=0.7, 
                             top_p=0.9,
                             max_output_tokens=8192
                         )
-                        # Mematikan filter agar tidak terpotong
+                        # Mematikan filter ketat agar tidak memotong analisa resiko ekonomi
                         safety_settings = [
                             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -1532,7 +1563,7 @@ Tugas Anda adalah menulis Executive Brief dari "Dashboard Macro Early Warning Sy
 
 ATURAN MUTLAK DAN SANGAT PENTING:
 1. JANGAN PERNAH memberikan kalimat pembuka atau basa-basi (seperti "Baik, berikut adalah draf...", "Sebagai Ahli Utama...", atau "Ini adalah hasilnya").
-2. LANGSUNG mulai teks Anda dengan Judul (Heading Utama).
+2. Tuliskan jawaban ANDA LANGSUNG dimulai dengan "### [JUDUL EXECUTIVE BRIEF]".
 3. Gunakan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, dan tegas.
 4. Fokus pada penyelesaian masalah (problem-solving) dan antisipasi risiko ke depan.
 
@@ -1567,21 +1598,22 @@ STRUKTUR EXECUTIVE BRIEF:
                             prompt, 
                             generation_config=generation_config,
                             safety_settings=safety_settings,
-                            request_options={"timeout": 600}
+                            stream=True
                         )
                         
-                        # Membersihkan kalau AI masih bandel kasih kalimat sapaan bot
-                        out_text = res.text
-                        if "Baik," in out_text or "Berikut" in out_text or "Sebagai" in out_text:
-                            if "###" in out_text:
-                                out_text = out_text[out_text.find("###"):]
-                            elif "**1." in out_text:
-                                out_text = out_text[out_text.find("**1."):]
-                        
+                        out_text = ""
+                        for chunk in res:
+                            out_text += chunk.text
+                            
+                        # Hilangkan hashtag berlebih di awal jika AI membangkang sedikit
+                        out_text = out_text.strip()
+                        if out_text.startswith("```markdown"):
+                            out_text = out_text.replace("```markdown", "").replace("```", "").strip()
+
                         st.session_state.policy_cache[signature] = out_text
                         with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
                         st.session_state[editor_key] = out_text
-                        st.success("Sintesis Selesai!")
+                        st.success("Sintesis Selesai secara Penuh!")
                         st.rerun()
 
                 except Exception as e: st.error(f"Error AI: {e}")
@@ -1601,7 +1633,7 @@ STRUKTUR EXECUTIVE BRIEF:
     if final_policy_text:
         st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
         st.markdown("#### 📑 Export Executive Brief")
-        st.caption("Unduh dalam format HTML yang elegan dan profesional untuk dilaporkan kepada pimpinan. Buka file HTML yang diunduh lalu 'Save as PDF' via fitur Print.")
+        st.caption("Unduh dalam format HTML yang elegan dan profesional untuk dilaporkan kepada pimpinan. Buka file HTML yang diunduh lalu 'Save as PDF' via fitur Print browser.")
         
         try:
             import markdown
@@ -1619,7 +1651,7 @@ STRUKTUR EXECUTIVE BRIEF:
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Executive Brief - Kementerian PPN/Bappenas</title>
                 <style>
-                    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+                    @import url('[https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap)');
                     
                     body {{ 
                         font-family: 'Plus Jakarta Sans', sans-serif; 
