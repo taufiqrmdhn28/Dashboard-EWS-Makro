@@ -785,69 +785,84 @@ if main_menu == "📊 Makro Nasional (DFM)":
         daily_summary_str = daily_berjalan_str = daily_rata_str = "Data harian tidak tersedia."
 
         if 'df_daily' in locals() and df_daily is not None:
-            daily_cols = st.columns(4)
-            daily_indicators = ['IHSG', 'Saham Daily', 'Obligasi Daily', 'Brent', 'WTI', 'CPO', 'Emas', 'Batubara', 'Natural Gas', 'Nikel']
-            idx = 0
-            for col in daily_indicators:
-                if col not in df_daily.columns: continue
-                valid_series = df_daily[[date_col_daily, col]].dropna()
-                if valid_series.empty: continue
-                latest_row = valid_series.iloc[-1]
-                val = latest_row[col] 
-                date_obj = latest_row[date_col_daily]
-                date_str = date_obj.strftime("%d %b %Y")
-                current_year = date_obj.year
-                
-                if len(valid_series) > 1:
-                    prev_row = valid_series.iloc[-2]
-                    val_prev = prev_row[col]
-                    dtd = ((val - val_prev) / val_prev) * 100 if val_prev != 0 else 0
-                else: dtd = 0
+            # --- Mengelompokkan Indikator Sesuai Arahan ---
+            group_keuangan = ['IHSG', 'Saham Daily', 'Obligasi Daily']
+            group_komoditas = ['Brent', 'WTI', 'CPO', 'Emas', 'Batubara', 'Natural Gas', 'Nikel']
+            
+            # Helper function untuk merender kartu berdasarkan kelompok
+            def render_cards(indicators_list):
+                cols = st.columns(4)
+                idx = 0
+                for col in indicators_list:
+                    if col not in df_daily.columns: continue
+                    valid_series = df_daily[[date_col_daily, col]].dropna()
+                    if valid_series.empty: continue
+                    latest_row = valid_series.iloc[-1]
+                    val = latest_row[col] 
+                    date_obj = latest_row[date_col_daily]
+                    date_str = date_obj.strftime("%d %b %Y")
+                    current_year = date_obj.year
                     
-                prev_year_data = valid_series[valid_series[date_col_daily].dt.year == current_year - 1]
-                if not prev_year_data.empty:
-                    ytd_base_val = prev_year_data.iloc[-1][col]
-                    ytd = ((val - ytd_base_val) / ytd_base_val) * 100 if ytd_base_val != 0 else 0
-                    ytd_str = f"YTD: {ytd:+.2f}%"
-                else: ytd, ytd_str = 0, "YTD: -"
-                
-                current_year_data = valid_series[valid_series[date_col_daily].dt.year == current_year]
-                avg_current = current_year_data[col].mean() if not current_year_data.empty else val
-                avg_prev = prev_year_data[col].mean() if not prev_year_data.empty else 0
-                avg_growth = ((avg_current - avg_prev) / avg_prev) * 100 if avg_prev != 0 else 0
+                    if len(valid_series) > 1:
+                        prev_row = valid_series.iloc[-2]
+                        val_prev = prev_row[col]
+                        dtd = ((val - val_prev) / val_prev) * 100 if val_prev != 0 else 0
+                    else: dtd = 0
+                        
+                    prev_year_data = valid_series[valid_series[date_col_daily].dt.year == current_year - 1]
+                    if not prev_year_data.empty:
+                        ytd_base_val = prev_year_data.iloc[-1][col]
+                        ytd = ((val - ytd_base_val) / ytd_base_val) * 100 if ytd_base_val != 0 else 0
+                        ytd_str = f"YTD: {ytd:+.2f}%"
+                    else: ytd, ytd_str = 0, "YTD: -"
+                    
+                    current_year_data = valid_series[valid_series[date_col_daily].dt.year == current_year]
+                    avg_current = current_year_data[col].mean() if not current_year_data.empty else val
+                    avg_prev = prev_year_data[col].mean() if not prev_year_data.empty else 0
+                    avg_growth = ((avg_current - avg_prev) / avg_prev) * 100 if avg_prev != 0 else 0
 
-                disp_val_b = f"{val:,.2f}" if val > 10 else f"{val:.2f}"
-                daily_berjalan_list.append(f"{col}: {disp_val_b} (DTD: {dtd:+.2f}%, {ytd_str})")
-                disp_val_r = f"{avg_current:,.2f}" if avg_current > 10 else f"{avg_current:.2f}"
-                daily_rata_list.append(f"{col}: Avg {current_year} = {disp_val_r} (Perubahan vs Avg 2025: {avg_growth:+.2f}%)")
+                    disp_val_b = f"{val:,.2f}" if val > 10 else f"{val:.2f}"
+                    daily_berjalan_list.append(f"{col}: {disp_val_b} (DTD: {dtd:+.2f}%, {ytd_str})")
+                    disp_val_r = f"{avg_current:,.2f}" if avg_current > 10 else f"{avg_current:.2f}"
+                    daily_rata_list.append(f"{col}: Avg {current_year} = {disp_val_r} (Perubahan vs Avg 2025: {avg_growth:+.2f}%)")
 
-                if "Berjalan" in selected_daily_view:
-                    disp_val = disp_val_b
-                    color_1 = "badge-red" if dtd < 0 else "badge-green"
-                    color_2 = "badge-red" if ytd < 0 else "badge-green"
-                    badge_1_str, badge_2_str = f"DTD: {dtd:+.2f}%", ytd_str
-                    subtitle_str = f"Data Spot: {date_str}"
-                    daily_summary_list.append(f"{col}: {disp_val_b} (DTD: {dtd:+.2f}%)")
-                else:
-                    disp_val = disp_val_r
-                    color_1 = "badge-neutral" 
-                    color_2 = "badge-red" if avg_growth < 0 else "badge-green"
-                    avg_prev_disp = f"{avg_prev:,.2f}" if avg_prev > 10 else f"{avg_prev:.2f}"
-                    badge_1_str, badge_2_str = f"Avg '25: {avg_prev_disp}", f"Δ {avg_growth:+.2f}%"
-                    subtitle_str = f"Rata-rata YTD {current_year}"
-                    daily_summary_list.append(f"{col}: Avg {current_year} = {disp_val_r} (Perubahan vs Avg 2025: {avg_growth:+.2f}%)")
+                    if "Berjalan" in selected_daily_view:
+                        disp_val = disp_val_b
+                        color_1 = "badge-red" if dtd < 0 else "badge-green"
+                        color_2 = "badge-red" if ytd < 0 else "badge-green"
+                        badge_1_str, badge_2_str = f"DTD: {dtd:+.2f}%", ytd_str
+                        subtitle_str = f"Data Spot: {date_str}"
+                        daily_summary_list.append(f"{col}: {disp_val_b} (DTD: {dtd:+.2f}%)")
+                    else:
+                        disp_val = disp_val_r
+                        color_1 = "badge-neutral" 
+                        color_2 = "badge-red" if avg_growth < 0 else "badge-green"
+                        avg_prev_disp = f"{avg_prev:,.2f}" if avg_prev > 10 else f"{avg_prev:.2f}"
+                        badge_1_str, badge_2_str = f"Avg '25: {avg_prev_disp}", f"Δ {avg_growth:+.2f}%"
+                        subtitle_str = f"Rata-rata YTD {current_year}"
+                        daily_summary_list.append(f"{col}: Avg {current_year} = {disp_val_r} (Perubahan vs Avg 2025: {avg_growth:+.2f}%)")
 
-                html = f"""
-                <div class="glass-card" style="padding: 15px; margin-bottom: 10px;">
-                    <div class="card-title">{col}</div>
-                    <div class="card-value">{disp_val}</div>
-                    <div style="font-size: 11px; color: #666; margin-bottom: 8px; font-style: italic;">{subtitle_str}</div>
-                    <span class="badge {color_1}">{badge_1_str}</span>
-                    <span class="badge {color_2}">{badge_2_str}</span>
-                </div>
-                """
-                with daily_cols[idx % 4]: st.markdown(html, unsafe_allow_html=True)
-                idx += 1
+                    html = f"""
+                    <div class="glass-card" style="padding: 15px; margin-bottom: 10px;">
+                        <div class="card-title">{col}</div>
+                        <div class="card-value">{disp_val}</div>
+                        <div style="font-size: 11px; color: #666; margin-bottom: 8px; font-style: italic;">{subtitle_str}</div>
+                        <span class="badge {color_1}">{badge_1_str}</span>
+                        <span class="badge {color_2}">{badge_2_str}</span>
+                    </div>
+                    """
+                    with cols[idx % 4]: st.markdown(html, unsafe_allow_html=True)
+                    idx += 1
+
+            # --- Tampilkan UI Kelompok 1: Pasar Keuangan ---
+            st.markdown("##### 🏦 Pasar Keuangan")
+            render_cards(group_keuangan)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # --- Tampilkan UI Kelompok 2: Komoditas ---
+            st.markdown("##### 🛢️ Komoditas")
+            render_cards(group_komoditas)
                 
             if daily_summary_list: daily_summary_str = " | ".join(daily_summary_list)
             
