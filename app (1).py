@@ -21,14 +21,18 @@ file_makro = "Makro Indikator AI.xlsx"
 file_adb = "INO_02022026.xlsx"
 
 # ==========================================
-# 0. KONFIGURASI API KEY & DATABASE
+# 0. KONFIGURASI API KEY (SECURE)
 # ==========================================
 try:
     USER_API_KEY = st.secrets["GEMINI_API_KEY"]
 except:
     USER_API_KEY = ""
 
+# ==========================================
+# SETUP CACHE AI (Biar Abadi)
+# ==========================================
 CACHE_FILE = "policy_cache.pkl"
+
 if 'policy_cache' not in st.session_state:
     if os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "rb") as f:
@@ -40,13 +44,14 @@ def make_signature(view, avg, target, monthly_info, daily_info, ext_nt, ext_oil)
     raw_str = f"{view}_{avg:.2f}_{target}_{monthly_info}_{daily_info}_{ext_nt}_{ext_oil}"
     return hashlib.md5(raw_str.encode()).hexdigest()
 
-DATA_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__) if '__file__' in globals() else os.getcwd())
-BPS_DB_PATH = os.path.join(DATA_DIR, os.environ.get("BPS_DB_FILE", "ekspor_impor_bps.db"))
-BOP_DB_PATH = os.path.join(DATA_DIR, os.environ.get("BOP_DB_FILE", "bop_indonesia.db"))
-TM_XLSX = os.path.join(DATA_DIR, os.environ.get("TM_XLSX_FILE", "data_trademap.xlsx"))
+DATA_DIR     = os.environ.get("DATA_DIR", os.path.dirname(__file__) if '__file__' in globals() else os.getcwd())
+BPS_DB_PATH  = os.path.join(DATA_DIR, os.environ.get("BPS_DB_FILE", "ekspor_impor_bps.db"))
+BOP_DB_PATH  = os.path.join(DATA_DIR, os.environ.get("BOP_DB_FILE", "bop_indonesia.db"))
+TM_XLSX      = os.path.join(DATA_DIR, os.environ.get("TM_XLSX_FILE", "data_trademap.xlsx"))
 
-BPS_TABLE = "exim_data"
-HS_ALL = [str(i).zfill(2) for i in range(1, 100)]
+BPS_TABLE    = "exim_data" 
+
+HS_ALL       = [str(i).zfill(2) for i in range(1, 100)]
 TAHUN_SAAT_INI = datetime.now().year
 TAHUN_TERSEDIA_BPS = list(range(2015, TAHUN_SAAT_INI + 1))
 
@@ -120,14 +125,6 @@ _NEGARA_KW = {
     "India": ["india"], "Malaysia": ["malaysia"], "Korea Selatan": ["korea"],
     "Australia": ["australia"], "Jerman": ["germany", "jerman"],
     "Belanda": ["netherlands", "belanda"], "Thailand": ["thailand"], "Vietnam": ["vietnam"],
-}
-
-ATURAN_WARNA = {
-    'PMI Manufaktur Negara Berkembang': True, 'Jumlah Uang Yang Beredar': True, 
-    'Penjualan Mobil': True, 'Penjualan semen': True, 'Ekspor Barang': True, 
-    'Impor Barang Modal': True, 'Impor Bahan Baku': True, 'Kredit Perbankan': True, 
-    'Penjualan Motor': True, 'Indeks Keyakinan Konsumen': True, 'Impor Barang Konsumsi': True, 
-    'Inflasi': False, 'Nilai Tukar terhadap Dolar AS': False, 'Suku Bunga': False
 }
 
 # ==========================================
@@ -418,8 +415,9 @@ def dot_trace(name, x, y): return go.Scatter(name=name, x=x, y=y, mode="markers"
 def delta_color(val: float) -> str: return "green" if val > 0.005 else "red" if val < -0.005 else "gray"
 def metric_delta_color(val: float) -> str: return "normal" if delta_color(val) == "green" else "inverse" if delta_color(val) == "red" else "off"
 
+
 # ==========================================
-# 3. DATA LOADING FETCHERS
+# 2. DATA LOADING & DFM ENGINE (MAKRO NASIONAL)
 # ==========================================
 @st.cache_data
 def load_data():
@@ -430,6 +428,7 @@ def load_data():
         df_hist_gdp = pd.read_excel(file_adb, sheet_name=2)
         return df_target, df_triwulan, df_makro, df_hist_gdp
     except Exception as e:
+        st.error(f"Error Loading Data: {e}")
         return None, None, None, None
 
 df_target, df_triwulan, df_makro, df_hist_gdp = load_data()
@@ -444,127 +443,10 @@ def load_daily_data():
         df_daily = df_daily.sort_values(by=date_col)
         return df_daily, date_col
     except Exception as e:
+        st.warning(f"⚠️ Gagal sinkronisasi data Google Sheets. Info Error: {e}")
         return None, None
 
 df_daily, date_col_daily = load_daily_data()
-
-@st.cache_data(ttl=600)
-def fetch_bps_db(sumber, tahun, tipe, bulan=""):
-    if not check_bps_db(): return pd.DataFrame()
-    try:
-        conn = sqlite3.connect(BPS_DB_PATH)
-        jenis = "Ekspor" if str(sumber) == "1" else "Impor"
-        query = f"SELECT kode_hs as kodehs, ctr as negara, value, netweight as berat FROM {BPS_TABLE} WHERE jenis_transaksi = ? AND tahun = ?"
-        params = [jenis, str(tahun)]
-        if tipe == "1" and bulan:
-            query += " AND bulan_kode = ?"
-            params.append(str(bulan).zfill(2)) 
-        df = pd.read_sql_query(query, conn, params=params)
-        conn.close()
-
-        if not df.empty:
-            df["kodehs"] = df["kodehs"].apply(clean_hs)
-            df["negara"] = df["negara"].apply(normalize_negara)
-            df["value"] = pd.to_numeric(df["value"], errors="coerce").fillna(0)
-            df["berat"] = pd.to_numeric(df["berat"], errors="coerce").fillna(0)
-        return df
-    except Exception as e:
-        return pd.DataFrame()
-
-@st.cache_data(ttl=600)
-def fetch_hist_bps_db(sumber, hs, tipe, bulan=""):
-    if not check_bps_db(): return pd.DataFrame()
-    try:
-        conn = sqlite3.connect(BPS_DB_PATH)
-        jenis = "Ekspor" if str(sumber) == "1" else "Impor"
-        query = f"SELECT tahun, ctr as negara, value FROM {BPS_TABLE} WHERE jenis_transaksi = ? AND kode_hs = ?"
-        params = [jenis, str(hs).zfill(2)]
-        if tipe == "1" and bulan:
-            query += " AND bulan_kode = ?"
-            params.append(str(bulan).zfill(2))
-        df = pd.read_sql_query(query, conn, params=params)
-        conn.close()
-        if not df.empty:
-            df["negara"] = df["negara"].apply(normalize_negara)
-            df["value"] = pd.to_numeric(df["value"], errors="coerce").fillna(0)
-        return df
-    except Exception as e:
-        return pd.DataFrame()
-
-@st.cache_data(ttl=3600)
-def load_trademap(mitra, tahun, sumber):
-    if not os.path.exists(TM_XLSX): return pd.DataFrame(), "FILE_NOT_FOUND"
-    try:
-        df = pd.read_excel(TM_XLSX)
-        need = ["Tahun", "Mitra", "HS", "Impor_Mitra", "Ekspor_Mitra"]
-        if not all(c in df.columns for c in need): return pd.DataFrame(), "INVALID_COLUMNS"
-        
-        df["HS"] = df["HS"].apply(clean_hs)
-        df["Tahun"] = df["Tahun"].astype(str).str.strip()
-        df["_mitra_n"] = df["Mitra"].apply(normalize_negara)
-        mitra_n = normalize_negara(mitra)
-        
-        df_f = df[(df["_mitra_n"] == mitra_n) & (df["Tahun"] == str(tahun))].copy()
-        if df_f.empty:
-            tahun_ada = df[df["_mitra_n"] == mitra_n]["Tahun"].unique().tolist()
-            if tahun_ada: return pd.DataFrame(), f"DATA_EMPTY_TAHUN|{','.join(sorted(tahun_ada))}"
-            return pd.DataFrame(), "DATA_EMPTY"
-            
-        col = "Impor_Mitra" if str(sumber) == "1" else "Ekspor_Mitra"
-        df_f[col] = pd.to_numeric(df_f[col], errors="coerce").fillna(0)
-        df_out = df_f.groupby("HS", as_index=False)[col].sum().rename(columns={col: "Trademap_Value"})
-        return df_out, "SUCCESS"
-    except Exception as e:
-        return pd.DataFrame(), str(e)
-
-@st.cache_data(ttl=3600)
-def bop_query(sql, params=()):
-    if not os.path.exists(BOP_DB_PATH): return pd.DataFrame()
-    try:
-        with sqlite3.connect(BOP_DB_PATH) as conn:
-            return pd.read_sql_query(sql, conn, params=params)
-    except Exception:
-        return pd.DataFrame()
-
-def bop_latest():
-    df = bop_query("""SELECT period FROM bop_quarterly WHERE value_mn_usd IS NOT NULL ORDER BY year DESC, quarter DESC LIMIT 1""")
-    return df["period"].iloc[0] if not df.empty else "-"
-
-def bop_latest_val(item_id):
-    df = bop_query("""SELECT value_mn_usd FROM bop_quarterly WHERE item_id=? AND value_mn_usd IS NOT NULL ORDER BY year DESC, quarter DESC LIMIT 1""", (item_id,))
-    return float(df["value_mn_usd"].iloc[0]) if not df.empty else None
-
-def bop_series(item_ids, y1, y2, freq):
-    ph = ",".join("?" * len(item_ids))
-    sql = f"""SELECT item_id, keterangan, items_en, year, quarter, period, value_mn_usd
-              FROM bop_quarterly WHERE item_id IN ({ph}) AND year >= ? AND year <= ? ORDER BY item_id, year, quarter"""
-    df = bop_query(sql, tuple(item_ids) + (y1, y2))
-    if df.empty or freq == "quarterly": return df
-    
-    parts = []
-    ratio = {54, 55, 56, 57, 58}
-    for iid, grp in df.groupby("item_id"):
-        if iid in ratio: r = grp[grp["quarter"] == "Q4"].copy()
-        else: r = grp.groupby(["item_id","keterangan","items_en","year"], as_index=False)["value_mn_usd"].sum()
-        parts.append(r)
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
-
-def calculate_ews(df):
-    if df.empty: return df
-    df["harga"] = df.apply(lambda row: row["value"] / row["berat"] if row.get("berat", 0) > 0 else 0, axis=1)
-    m_val, s_val = df["value"].mean(), df["value"].std()
-    df["z_score"] = 0 if pd.isna(s_val) or s_val == 0 else (df["value"] - m_val) / s_val
-    df_vh = df[df["harga"] > 0]
-    m_h, s_h = (df_vh["harga"].mean(), df_vh["harga"].std()) if not df_vh.empty else (0, 0)
-    df["z_score_harga"] = df.apply(lambda row: 0 if pd.isna(s_h) or s_h == 0 or row["harga"] == 0 else (row["harga"] - m_h) / s_h, axis=1)
-    
-    df["status_ews"] = "Normal"
-    df.loc[df["z_score"] >  1.5, "status_ews"] = "🔴 Batas Atas Nilai"
-    df.loc[df["z_score"] < -0.5, "status_ews"] = "🟡 Batas Bawah Nilai"
-    df.loc[df["z_score_harga"] > 2.0, "status_ews"] = "🟣 Anomali Harga"
-    mask = (df["z_score"] > 1.5) & (df["z_score_harga"] > 2.0)
-    df.loc[mask, "status_ews"] = "🚨 KRITIS: Spike"
-    return df
 
 def apply_matlab_transformation(series, j1, j2, j3, freq='M'):
     out = series.copy().astype(float)
@@ -686,19 +568,160 @@ def run_full_dfm_replication():
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=600)
+def fetch_bps_db(sumber, tahun, tipe, bulan=""):
+    if not check_bps_db(): return pd.DataFrame()
+    try:
+        conn = sqlite3.connect(BPS_DB_PATH)
+        jenis = "Ekspor" if str(sumber) == "1" else "Impor"
+        query = f"SELECT kode_hs as kodehs, ctr as negara, value, netweight as berat FROM {BPS_TABLE} WHERE jenis_transaksi = ? AND tahun = ?"
+        params = [jenis, str(tahun)]
+        if tipe == "1" and bulan:
+            query += " AND bulan_kode = ?"
+            params.append(str(bulan).zfill(2)) 
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+
+        if not df.empty:
+            df["kodehs"] = df["kodehs"].apply(clean_hs)
+            df["negara"] = df["negara"].apply(normalize_negara)
+            df["value"] = pd.to_numeric(df["value"], errors="coerce").fillna(0)
+            df["berat"] = pd.to_numeric(df["berat"], errors="coerce").fillna(0)
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=600)
+def fetch_hist_bps_db(sumber, hs, tipe, bulan=""):
+    if not check_bps_db(): return pd.DataFrame()
+    try:
+        conn = sqlite3.connect(BPS_DB_PATH)
+        jenis = "Ekspor" if str(sumber) == "1" else "Impor"
+        query = f"SELECT tahun, ctr as negara, value FROM {BPS_TABLE} WHERE jenis_transaksi = ? AND kode_hs = ?"
+        params = [jenis, str(hs).zfill(2)]
+        if tipe == "1" and bulan:
+            query += " AND bulan_kode = ?"
+            params.append(str(bulan).zfill(2))
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        if not df.empty:
+            df["negara"] = df["negara"].apply(normalize_negara)
+            df["value"] = pd.to_numeric(df["value"], errors="coerce").fillna(0)
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=3600)
+def load_trademap(mitra, tahun, sumber):
+    if not os.path.exists(TM_XLSX): return pd.DataFrame(), "FILE_NOT_FOUND"
+    try:
+        df = pd.read_excel(TM_XLSX)
+        need = ["Tahun", "Mitra", "HS", "Impor_Mitra", "Ekspor_Mitra"]
+        if not all(c in df.columns for c in need): return pd.DataFrame(), "INVALID_COLUMNS"
+        
+        df["HS"] = df["HS"].apply(clean_hs)
+        df["Tahun"] = df["Tahun"].astype(str).str.strip()
+        df["_mitra_n"] = df["Mitra"].apply(normalize_negara)
+        mitra_n = normalize_negara(mitra)
+        
+        df_f = df[(df["_mitra_n"] == mitra_n) & (df["Tahun"] == str(tahun))].copy()
+        if df_f.empty:
+            tahun_ada = df[df["_mitra_n"] == mitra_n]["Tahun"].unique().tolist()
+            if tahun_ada: return pd.DataFrame(), f"DATA_EMPTY_TAHUN|{','.join(sorted(tahun_ada))}"
+            return pd.DataFrame(), "DATA_EMPTY"
+            
+        col = "Impor_Mitra" if str(sumber) == "1" else "Ekspor_Mitra"
+        df_f[col] = pd.to_numeric(df_f[col], errors="coerce").fillna(0)
+        df_out = df_f.groupby("HS", as_index=False)[col].sum().rename(columns={col: "Trademap_Value"})
+        return df_out, "SUCCESS"
+    except Exception as e:
+        return pd.DataFrame(), str(e)
+
+@st.cache_data(ttl=3600)
+def bop_query(sql, params=()):
+    if not os.path.exists(BOP_DB_PATH): return pd.DataFrame()
+    try:
+        with sqlite3.connect(BOP_DB_PATH) as conn:
+            return pd.read_sql_query(sql, conn, params=params)
+    except Exception:
+        return pd.DataFrame()
+
+def bop_latest():
+    df = bop_query("""SELECT period FROM bop_quarterly WHERE value_mn_usd IS NOT NULL ORDER BY year DESC, quarter DESC LIMIT 1""")
+    return df["period"].iloc[0] if not df.empty else "-"
+
+def bop_latest_val(item_id):
+    df = bop_query("""SELECT value_mn_usd FROM bop_quarterly WHERE item_id=? AND value_mn_usd IS NOT NULL ORDER BY year DESC, quarter DESC LIMIT 1""", (item_id,))
+    return float(df["value_mn_usd"].iloc[0]) if not df.empty else None
+
+def bop_series(item_ids, y1, y2, freq):
+    ph = ",".join("?" * len(item_ids))
+    sql = f"""SELECT item_id, keterangan, items_en, year, quarter, period, value_mn_usd
+              FROM bop_quarterly WHERE item_id IN ({ph}) AND year >= ? AND year <= ? ORDER BY item_id, year, quarter"""
+    df = bop_query(sql, tuple(item_ids) + (y1, y2))
+    if df.empty or freq == "quarterly": return df
+    
+    parts = []
+    ratio = {54, 55, 56, 57, 58}
+    for iid, grp in df.groupby("item_id"):
+        if iid in ratio: r = grp[grp["quarter"] == "Q4"].copy()
+        else: r = grp.groupby(["item_id","keterangan","items_en","year"], as_index=False)["value_mn_usd"].sum()
+        parts.append(r)
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+
+def calculate_ews(df):
+    if df.empty: return df
+    df["harga"] = df.apply(lambda row: row["value"] / row["berat"] if row.get("berat", 0) > 0 else 0, axis=1)
+    m_val, s_val = df["value"].mean(), df["value"].std()
+    df["z_score"] = 0 if pd.isna(s_val) or s_val == 0 else (df["value"] - m_val) / s_val
+    df_vh = df[df["harga"] > 0]
+    m_h, s_h = (df_vh["harga"].mean(), df_vh["harga"].std()) if not df_vh.empty else (0, 0)
+    df["z_score_harga"] = df.apply(lambda row: 0 if pd.isna(s_h) or s_h == 0 or row["harga"] == 0 else (row["harga"] - m_h) / s_h, axis=1)
+    
+    df["status_ews"] = "Normal"
+    df.loc[df["z_score"] >  1.5, "status_ews"] = "🔴 Batas Atas Nilai"
+    df.loc[df["z_score"] < -0.5, "status_ews"] = "🟡 Batas Bawah Nilai"
+    df.loc[df["z_score_harga"] > 2.0, "status_ews"] = "🟣 Anomali Harga"
+    mask = (df["z_score"] > 1.5) & (df["z_score_harga"] > 2.0)
+    df.loc[mask, "status_ews"] = "🚨 KRITIS: Spike"
+    return df
+
+
 # ==========================================
-# MAIN UI: HEADER & MENU
+# 4. UI HEADER & MENU (DI ATAS HORIZONTAL)
 # ==========================================
 st.markdown("""
 <style>
 [data-testid="stSidebar"] { background:#ffffff; border-right:1px solid #e1e4e8; }
-.main-header { background: linear-gradient(135deg, #1d4ed8, #2563eb); color: white; padding: 14px 20px; border-radius: 10px; margin-bottom: 16px; display: flex; align-items: center; gap: 14px; }
-.logo-box { background: white; color: #1d4ed8; width: 38px; height: 38px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0; }
+.main-header {
+    background: linear-gradient(135deg, #1d4ed8, #2563eb);
+    color: white; padding: 14px 20px; border-radius: 10px;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 14px;
+}
+.logo-box {
+    background: white; color: #1d4ed8; width: 38px; height: 38px;
+    border-radius: 7px; display: flex; align-items: center;
+    justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0;
+}
 .hdr-title { font-size: 17px; font-weight: 700; }
 .hdr-sub   { font-size: 12px; opacity: 0.8; margin-top: 2px; }
-.live-badge { margin-left: auto; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.5); padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.live-badge {
+    margin-left: auto; background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.5);
+    padding: 5px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.disclaimer {
+    background: #fef3c7; border: 1px solid #d97706; color: #92400e;
+    padding: 10px 16px; border-radius: 7px;
+    font-size: 13px; font-weight: 600; margin-bottom: 14px;
+}
+div[data-testid="metric-container"] > div { font-family: monospace; }
 div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify-content: center; background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb;}
 </style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
 <div class="main-header">
     <div class="logo-box">ID</div>
     <div>
@@ -708,6 +731,12 @@ div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify
     <div class="live-badge">&#11044; SIM AKTIF</div>
 </div>
 """, unsafe_allow_html=True)
+
+st.markdown(
+    '<div class="disclaimer">&#9888;&#65039; <strong>Disclaimer:</strong>'
+    ' Modul Sektor Eksternal dan Daerah masih dalam tahap pengembangan.</div>',
+    unsafe_allow_html=True,
+)
 
 main_menu = st.radio(
     "Pilih Modul Analisis:",
@@ -725,14 +754,19 @@ main_menu = st.radio(
 st.divider()
 
 # =========================================================================
-# CONTROLLER TABS
+# MODUL 1: MAKRO NASIONAL (DFM)
 # =========================================================================
-
 if main_menu == "📊 Makro Nasional (DFM)":
     
     st.markdown("""
     <style>
-    .glass-card { background: rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); padding: 24px; margin-bottom: 24px; }
+    .glass-card {
+        background: rgba(255, 255, 255, 0.65);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7);
+        padding: 24px; margin-bottom: 24px;
+    }
     .card-title { font-size: 13px; color: #444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .card-value { font-size: 26px; color: #111; font-weight: 800; margin: 4px 0; }
     .badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; margin-right: 6px; }
@@ -1231,7 +1265,6 @@ if main_menu == "📊 Makro Nasional (DFM)":
         else: st.info("Belum ada data bulanan untuk ditampilkan.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-
 # =========================================================================
 # MODUL 2: ANALISIS SENSITIVITAS (SEKTOR EKSTERNAL & FISKAL)
 # =========================================================================
@@ -1522,11 +1555,11 @@ elif main_menu == "🌍 Analisis Sensitivitas":
         limit = 3.0
         col_b, col_s = st.columns(2)
         with col_b:
-            alert_b = "🔴" if abs(b_sim["defpdb"]) > limit else "🟢"
+            alert_b = "🔴" if abs(b_sim['defpdb']) > limit else "🟢"
             st.markdown(f"**Baseline {alert_b}:** `{b_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(b_sim["defpdb"]) / limit, 1.0))
         with col_s:
-            alert_s = "🔴" if abs(s_sim["defpdb"]) > limit else "🟢"
+            alert_s = "🔴" if abs(s_sim['defpdb']) > limit else "🟢"
             st.markdown(f"**Simulasi {alert_s}:** `{s_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(s_sim["defpdb"]) / limit, 1.0))
 
@@ -1562,6 +1595,24 @@ elif main_menu == "🌍 Analisis Sensitivitas":
             fig.update_layout(**fig_layout("Sensitivitas Defisit vs ICP", xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)"))
             st.plotly_chart(fig, use_container_width=True)
 
+        c4, c5 = st.columns(2)
+        with c4:
+            fig = go.Figure([
+                bar_trace("Subsidi Energi Baseline", YL, R["sube"]["b"],  C["red"], opacity=0.35),
+                bar_trace("Subsidi Energi Simulasi", YL, R["sube"]["s"],  C["red2"], opacity=0.85),
+                bar_trace("Bunga Utang Baseline", YL, R["bunga"]["b"], C["orange"], opacity=0.35),
+                bar_trace("Bunga Utang Simulasi", YL, R["bunga"]["s"], C["orange2"], opacity=0.85)
+            ])
+            fig.update_layout(**fig_layout("Komponen Belanja Utama (Rp T)", barmode="group"))
+            st.plotly_chart(fig, use_container_width=True)
+        with c5:
+            fig = go.Figure([
+                bar_trace("Pajak Baseline", YL, R["pajak"]["b"], C["blue"], opacity=0.35),
+                bar_trace("Pajak Simulasi", YL, R["pajak"]["s"], C["teal"], opacity=0.85)
+            ])
+            fig.update_layout(**fig_layout("Komponen Penerimaan Pajak (Rp T)", barmode="group"))
+            st.plotly_chart(fig, use_container_width=True)
+
         ax = s_sim["ax"]
         col_rev, col_bel = st.columns(2)
         with col_rev:
@@ -1569,13 +1620,13 @@ elif main_menu == "🌍 Analisis Sensitivitas":
             st.dataframe(pd.DataFrame({
                 "Komponen": ["PPh Migas (ICP sensitif)", "PNBP SDA Migas (ICP sensitif)", "Bea Keluar (NT + komoditas)", "Delta Total Pendapatan"],
                 "Delta (Rp T)": [round(ax["pph"], 2), round(ax["sda"], 2), round(ax["bea"], 2), round(ax["rev"], 2)],
-            }), hide_index=True, width="stretch")
+            }), hide_index=True, use_container_width=True)
         with col_bel:
             st.markdown("##### 🔴 Tekanan Sisi Belanja")
             st.dataframe(pd.DataFrame({
                 "Komponen": ["Subsidi Energi (ICP naik + NT melemah)", "Bunga Utang Valas (NT melemah)", "Delta Total Belanja"],
                 "Delta (Rp T)": [round(ax["sube"], 2), round(ax["bunga"], 2), round(ax["bel"], 2)],
-            }), hide_index=True, width="stretch")
+            }), hide_index=True, use_container_width=True)
 
     with tab_table:
         st.markdown(f"#### Tabel Lengkap BOP, GDP & APBN — Baseline vs Simulasi (Tahun {yr})")
@@ -1695,7 +1746,7 @@ elif main_menu == "🚢 Intelijen Komoditas & Eksternal":
                         fig_m3_h.update_layout(xaxis=dict(type='category'), margin=dict(l=0,r=0,t=30,b=0))
                         st.plotly_chart(fig_m3_h, use_container_width=True)
             with ml_r:
-                section_title("STRUKTUR KOMODITAS UNGGUHLAN (TOP 15)")
+                section_title("STRUKTUR KOMODITAS UNGGULAN (TOP 15)")
                 fig_k3 = px.bar(kmd_m3.head(15), y="label", x="value", orientation='h')
                 fig_k3.update_yaxes(categoryorder='total ascending', type='category')
                 fig_k3.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=350)
@@ -1843,7 +1894,7 @@ Tugas Anda adalah menulis Executive Brief dari "Dashboard Macro Early Warning Sy
 
 ATURAN MUTLAK DAN SANGAT PENTING:
 1. JANGAN PERNAH memberikan kalimat pembuka atau basa-basi (seperti "Baik, berikut adalah draf...", "Sebagai Ahli Utama...", atau "Ini adalah hasilnya").
-2. LANGSUNG mulai teks Anda dengan Judul (Heading Utama).
+2. Tuliskan jawaban ANDA LANGSUNG dimulai dengan "### [JUDUL EXECUTIVE BRIEF]".
 3. Gunakan gaya bahasa perencanaan strategis khas Bappenas (The Bappenas Way) yang mengedepankan "Evidence-Based Planning", visioner, teknokratis, dan tegas.
 4. Fokus pada penyelesaian masalah (problem-solving) dan antisipasi risiko ke depan.
 
