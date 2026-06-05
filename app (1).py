@@ -2,12 +2,17 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 import google.generativeai as genai
 from statsmodels.tsa.statespace.dynamic_factor_mq import DynamicFactorMQ
 import os
 import pickle
 import warnings
 import hashlib
+import sqlite3
+from datetime import datetime
+import traceback
+import re
 
 # Abaikan warning agar terminal bersih
 warnings.filterwarnings('ignore')
@@ -16,18 +21,14 @@ file_makro = "Makro Indikator AI.xlsx"
 file_adb = "INO_02022026.xlsx"
 
 # ==========================================
-# 0. KONFIGURASI API KEY (SECURE)
+# 0. KONFIGURASI API KEY & DATABASE
 # ==========================================
 try:
     USER_API_KEY = st.secrets["GEMINI_API_KEY"]
 except:
     USER_API_KEY = ""
 
-# ==========================================
-# SETUP CACHE AI (Biar Abadi)
-# ==========================================
 CACHE_FILE = "policy_cache.pkl"
-
 if 'policy_cache' not in st.session_state:
     if os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "rb") as f:
@@ -38,6 +39,96 @@ if 'policy_cache' not in st.session_state:
 def make_signature(view, avg, target, monthly_info, daily_info, ext_nt, ext_oil):
     raw_str = f"{view}_{avg:.2f}_{target}_{monthly_info}_{daily_info}_{ext_nt}_{ext_oil}"
     return hashlib.md5(raw_str.encode()).hexdigest()
+
+DATA_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__) if '__file__' in globals() else os.getcwd())
+BPS_DB_PATH = os.path.join(DATA_DIR, os.environ.get("BPS_DB_FILE", "ekspor_impor_bps.db"))
+BOP_DB_PATH = os.path.join(DATA_DIR, os.environ.get("BOP_DB_FILE", "bop_indonesia.db"))
+TM_XLSX = os.path.join(DATA_DIR, os.environ.get("TM_XLSX_FILE", "data_trademap.xlsx"))
+
+BPS_TABLE = "exim_data"
+HS_ALL = [str(i).zfill(2) for i in range(1, 100)]
+TAHUN_SAAT_INI = datetime.now().year
+TAHUN_TERSEDIA_BPS = list(range(2015, TAHUN_SAAT_INI + 1))
+
+PERIODE_OPSI = {
+    "Tahunan": "tahunan", "Januari": "1", "Februari": "2", "Maret": "3", 
+    "April": "4", "Mei": "5", "Juni": "6", "Juli": "7", "Agustus": "8", 
+    "September": "9", "Oktober": "10", "November": "11", "Desember": "12"
+}
+
+PARTNER_LIST = [
+    "China", "Amerika Serikat", "Jepang", "Singapura",
+    "India", "Malaysia", "Korea Selatan", "Australia",
+    "Jerman", "Belanda", "Thailand", "Vietnam",
+]
+
+HS_DESC = {
+    "01":"Binatang Hidup","02":"Daging & Produk Daging","03":"Ikan & Produk Ikan",
+    "04":"Produk Susu & Telur","05":"Produk Hewani Lainnya","06":"Tanaman Hidup & Bunga",
+    "07":"Sayuran","08":"Buah-buahan","09":"Kopi, Teh & Rempah","10":"Serealia",
+    "11":"Produk Penggilingan","12":"Biji Minyak","13":"Getah & Resin",
+    "14":"Bahan Nabati Lainnya","15":"Lemak & Minyak Nabati/Hewani","16":"Olahan Daging & Ikan",
+    "17":"Gula & Kembang Gula","18":"Kakao & Olahannya","19":"Olahan Sereal & Tepung",
+    "20":"Olahan Sayur & Buah","21":"Aneka Olahan Pangan","22":"Minuman & Cuka",
+    "23":"Ampas Industri Pangan","24":"Tembakau","25":"Garam, Belerang & Batu",
+    "26":"Bijih, Terak & Abu","27":"Bahan Bakar Mineral & Minyak Bumi",
+    "28":"Kimia Anorganik","29":"Kimia Organik","30":"Produk Farmasi",
+    "31":"Pupuk","32":"Cat, Tinta & Vernis","33":"Minyak Atsiri & Kosmetik",
+    "34":"Sabun & Deterjen","35":"Albuminoid & Pati","36":"Bahan Peledak",
+    "37":"Produk Foto","38":"Kimia Lainnya","39":"Plastik & Barang Plastik",
+    "40":"Karet & Barang Karet","41":"Kulit Mentah & Samak","42":"Barang Kulit & Tas",
+    "43":"Bulu Binatang","44":"Kayu & Produk Kayu","45":"Gabus",
+    "46":"Produk Anyaman","47":"Bubur Kayu (Pulp)","48":"Kertas & Karton",
+    "49":"Buku & Produk Cetak","50":"Sutra","51":"Wol & Bulu Halus",
+    "52":"Kapas","53":"Serat Tekstil Lainnya","54":"Filamen Buatan",
+    "55":"Serat Staple Buatan","56":"Benang & Kain Khusus","57":"Karpet & Alas Lantai",
+    "58":"Kain Tenunan Khusus","59":"Kain Teknik","60":"Kain Rajut",
+    "61":"Pakaian Rajut","62":"Pakaian Tenun","63":"Tekstil Rumah Tangga",
+    "64":"Alas Kaki","65":"Topi & Aksesori Kepala","66":"Payung & Tongkat",
+    "67":"Bulu Olahan & Bunga Buatan","68":"Barang dari Batu & Semen",
+    "69":"Produk Keramik","70":"Kaca & Produk Kaca",
+    "71":"Batu Permata & Logam Mulia","72":"Besi & Baja",
+    "73":"Barang dari Besi/Baja","74":"Tembaga & Produknya",
+    "75":"Nikel & Produknya","76":"Aluminium & Produknya",
+    "78":"Timbal & Produknya","79":"Seng & Produknya","80":"Timah & Produknya",
+    "81":"Logam Dasar Lainnya","82":"Perkakas & Peralatan Logam",
+    "83":"Barang Logam Lainnya","84":"Mesin & Perlengkapan Mekanik",
+    "85":"Mesin & Perlengkapan Listrik","86":"Kereta Api & Komponen",
+    "87":"Kendaraan Bermotor","88":"Pesawat Udara & Komponen",
+    "89":"Kapal & Perahu","90":"Instrumen Optik & Medis",
+    "91":"Jam & Arloji","92":"Instrumen Musik","93":"Senjata & Amunisi",
+    "94":"Furnitur & Perlengkapan","95":"Mainan & Perlengkapan Olahraga",
+    "96":"Produk Manufaktur Lainnya","97":"Karya Seni & Antik","99":"Barang Lainnya",
+}
+
+BOP_MAIN_ITEMS = {
+    1:"Transaksi Berjalan", 2:"Barang", 17:"Jasa",
+    20:"Pendapatan Primer", 23:"Pendapatan Sekunder",
+    26:"Transaksi Modal", 29:"Transaksi Finansial",
+    32:"Investasi Langsung", 35:"Investasi Portofolio",
+    40:"Derivatif Finansial", 41:"Investasi Lainnya",
+    46:"Total (I+II+III)", 47:"Selisih Perhitungan",
+    48:"Neraca Keseluruhan", 54:"Cadangan Devisa",
+    56:"CA % PDB",
+}
+
+_NEGARA_KW = {
+    "China": ["china", "cina", "tiongkok", "zhongguo"],
+    "Amerika Serikat": ["united states", "america", "u.s.a", "u.s.", "serikat", "usa"],
+    "Jepang": ["japan", "jepang", "nippon"],
+    "Singapura": ["singapore", "singapura"],
+    "India": ["india"], "Malaysia": ["malaysia"], "Korea Selatan": ["korea"],
+    "Australia": ["australia"], "Jerman": ["germany", "jerman"],
+    "Belanda": ["netherlands", "belanda"], "Thailand": ["thailand"], "Vietnam": ["vietnam"],
+}
+
+ATURAN_WARNA = {
+    'PMI Manufaktur Negara Berkembang': True, 'Jumlah Uang Yang Beredar': True, 
+    'Penjualan Mobil': True, 'Penjualan semen': True, 'Ekspor Barang': True, 
+    'Impor Barang Modal': True, 'Impor Bahan Baku': True, 'Kredit Perbankan': True, 
+    'Penjualan Motor': True, 'Indeks Keyakinan Konsumen': True, 'Impor Barang Konsumsi': True, 
+    'Inflasi': False, 'Nilai Tukar terhadap Dolar AS': False, 'Suku Bunga': False
+}
 
 # ==========================================
 # 1. GLOBAL SETUP & VARIABEL SEKTOR EKSTERNAL
@@ -178,7 +269,7 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
     s["capbal"]     = b["capbal"]
     s["finbal"]     = b["finbal"]
     
-    # Kalkulasi Delta untuk BOP agar 100% konsisten
+    # Kalkulasi Delta untuk BOP
     delta_trade = s["tradebal"] - b["tradebal"]
     delta_svc = s["svcbal"] - b["svcbal"]
     delta_prim = s["primbal"] - b["primbal"]
@@ -273,52 +364,62 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
 
     return b, s
 
-# --- Helper Chart Sektor Eksternal ---
+# --- UI Helpers ---
+def kpi_card(title, value, color, sub_text=""):
+    st.markdown(f"""
+        <div style="border: 1px solid rgba(128,128,128,0.2); border-top: 3px solid {color}; 
+                    padding: 15px; border-radius: 6px; margin-bottom: 15px; background-color: transparent;">
+            <div style="font-size: 11px; color: gray; letter-spacing: 1px;">{title}</div>
+            <div style="font-size: 22px; font-weight: bold; color: {color}; margin-top: 5px;">{value}</div>
+            <div style="font-size: 11px; color: gray; margin-top: 5px;">{sub_text}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+def section_title(title):
+    st.markdown(f"<p style='font-size:11px; font-weight:bold; letter-spacing:1px; margin-bottom:0px; text-transform:uppercase;'>{title}</p>", unsafe_allow_html=True)
+
+def normalize_negara(nama: str) -> str:
+    if not nama: return nama
+    low = str(nama).strip().lower()
+    for display, kws in _NEGARA_KW.items():
+        if low in kws or any(kw in low for kw in kws): return display
+    return str(nama).strip()
+
+def clean_hs(raw) -> str:
+    if pd.isna(raw) or str(raw).strip() == "": return ""
+    s = str(raw).strip()
+    m = re.search(r'\d+', s)
+    if m: return m.group(0)[:2].zfill(2)
+    return s[:2].zfill(2)
+
+def get_periode_params(pilihan):
+    return ("2", "") if pilihan == "tahunan" else ("1", pilihan)
+
+def check_bps_db():
+    return os.path.exists(BPS_DB_PATH)
+
 _BASE_LAYOUT = dict(
-    paper_bgcolor="white",
-    plot_bgcolor="#f8f9fa",
+    paper_bgcolor="white", plot_bgcolor="#f8f9fa",
     font=dict(family="monospace", size=11, color="#4b5563"),
-    legend=dict(
-        orientation="h", yanchor="bottom", y=1.02,
-        xanchor="right", x=1, font_size=10,
-    ),
-    margin=dict(l=40, r=20, t=50, b=40),
-    height=270,
-    xaxis=dict(gridcolor="#e5e7eb", showgrid=True),
-    yaxis=dict(gridcolor="#e5e7eb", showgrid=True),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font_size=10),
+    margin=dict(l=40, r=20, t=50, b=40), height=270,
+    xaxis=dict(gridcolor="#e5e7eb", showgrid=True), yaxis=dict(gridcolor="#e5e7eb", showgrid=True),
 )
 
 def fig_layout(title: str, barmode: str = None, **kwargs) -> dict:
     layout = {**_BASE_LAYOUT, "title": dict(text=title, font=dict(size=13)), **kwargs}
-    if barmode:
-        layout["barmode"] = barmode
+    if barmode: layout["barmode"] = barmode
     return layout
 
-def bar_trace(name, x, y, color, opacity=0.75):
-    return go.Bar(name=name, x=x, y=y, marker_color=color, marker_line_width=0, opacity=opacity)
-
-def line_trace(name, x, y, color, fill=None, fillcolor=None, width=2, size=6):
-    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=color, width=width), marker=dict(size=size, color=color), fill=fill, fillcolor=fillcolor)
-
-def line_base_trace(name, x, y):
-    return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=C["gray"], dash="dash", width=1.5), marker=dict(size=4, color=C["gray"]))
-
-def dot_trace(name, x, y):
-    return go.Scatter(name=name, x=x, y=y, mode="markers", marker=dict(size=11, color=C["amber"], line=dict(color="white", width=2)))
-
-def delta_color(val: float) -> str:
-    if val > 0.005:   return "green"
-    if val < -0.005:  return "red"
-    return "gray"
-
-def metric_delta_color(val: float) -> str:
-    dc = delta_color(val)
-    if dc == "green": return "normal"
-    if dc == "red":   return "inverse"
-    return "off"
+def bar_trace(name, x, y, color, opacity=0.75): return go.Bar(name=name, x=x, y=y, marker_color=color, marker_line_width=0, opacity=opacity)
+def line_trace(name, x, y, color, fill=None, fillcolor=None, width=2, size=6): return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=color, width=width), marker=dict(size=size, color=color), fill=fill, fillcolor=fillcolor)
+def line_base_trace(name, x, y): return go.Scatter(name=name, x=x, y=y, mode="lines+markers", line=dict(color=C["gray"], dash="dash", width=1.5), marker=dict(size=4, color=C["gray"]))
+def dot_trace(name, x, y): return go.Scatter(name=name, x=x, y=y, mode="markers", marker=dict(size=11, color=C["amber"], line=dict(color="white", width=2)))
+def delta_color(val: float) -> str: return "green" if val > 0.005 else "red" if val < -0.005 else "gray"
+def metric_delta_color(val: float) -> str: return "normal" if delta_color(val) == "green" else "inverse" if delta_color(val) == "red" else "off"
 
 # ==========================================
-# 2. DATA LOADING & DFM ENGINE (MAKRO NASIONAL)
+# 3. DATA LOADING FETCHERS
 # ==========================================
 @st.cache_data
 def load_data():
@@ -329,7 +430,6 @@ def load_data():
         df_hist_gdp = pd.read_excel(file_adb, sheet_name=2)
         return df_target, df_triwulan, df_makro, df_hist_gdp
     except Exception as e:
-        st.error(f"Error Loading Data: {e}")
         return None, None, None, None
 
 df_target, df_triwulan, df_makro, df_hist_gdp = load_data()
@@ -337,17 +437,134 @@ df_target, df_triwulan, df_makro, df_hist_gdp = load_data()
 @st.cache_data(ttl=3600)
 def load_daily_data():
     try:
-        url = "https://docs.google.com/spreadsheets/d/1wM0lHYqNTgf4Jo4AMCDakWnwqF1lVg-7/export?format=xlsx&gid=1981545536"
+        url = "[https://docs.google.com/spreadsheets/d/1wM0lHYqNTgf4Jo4AMCDakWnwqF1lVg-7/export?format=xlsx&gid=1981545536](https://docs.google.com/spreadsheets/d/1wM0lHYqNTgf4Jo4AMCDakWnwqF1lVg-7/export?format=xlsx&gid=1981545536)"
         df_daily = pd.read_excel(url, engine="openpyxl")
         date_col = 'Tanggal' if 'Tanggal' in df_daily.columns else df_daily.columns[0]
         df_daily[date_col] = pd.to_datetime(df_daily[date_col])
         df_daily = df_daily.sort_values(by=date_col)
         return df_daily, date_col
     except Exception as e:
-        st.warning(f"⚠️ Gagal sinkronisasi data Google Sheets. Info Error: {e}")
         return None, None
 
 df_daily, date_col_daily = load_daily_data()
+
+@st.cache_data(ttl=600)
+def fetch_bps_db(sumber, tahun, tipe, bulan=""):
+    if not check_bps_db(): return pd.DataFrame()
+    try:
+        conn = sqlite3.connect(BPS_DB_PATH)
+        jenis = "Ekspor" if str(sumber) == "1" else "Impor"
+        query = f"SELECT kode_hs as kodehs, ctr as negara, value, netweight as berat FROM {BPS_TABLE} WHERE jenis_transaksi = ? AND tahun = ?"
+        params = [jenis, str(tahun)]
+        if tipe == "1" and bulan:
+            query += " AND bulan_kode = ?"
+            params.append(str(bulan).zfill(2)) 
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+
+        if not df.empty:
+            df["kodehs"] = df["kodehs"].apply(clean_hs)
+            df["negara"] = df["negara"].apply(normalize_negara)
+            df["value"] = pd.to_numeric(df["value"], errors="coerce").fillna(0)
+            df["berat"] = pd.to_numeric(df["berat"], errors="coerce").fillna(0)
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=600)
+def fetch_hist_bps_db(sumber, hs, tipe, bulan=""):
+    if not check_bps_db(): return pd.DataFrame()
+    try:
+        conn = sqlite3.connect(BPS_DB_PATH)
+        jenis = "Ekspor" if str(sumber) == "1" else "Impor"
+        query = f"SELECT tahun, ctr as negara, value FROM {BPS_TABLE} WHERE jenis_transaksi = ? AND kode_hs = ?"
+        params = [jenis, str(hs).zfill(2)]
+        if tipe == "1" and bulan:
+            query += " AND bulan_kode = ?"
+            params.append(str(bulan).zfill(2))
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        if not df.empty:
+            df["negara"] = df["negara"].apply(normalize_negara)
+            df["value"] = pd.to_numeric(df["value"], errors="coerce").fillna(0)
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=3600)
+def load_trademap(mitra, tahun, sumber):
+    if not os.path.exists(TM_XLSX): return pd.DataFrame(), "FILE_NOT_FOUND"
+    try:
+        df = pd.read_excel(TM_XLSX)
+        need = ["Tahun", "Mitra", "HS", "Impor_Mitra", "Ekspor_Mitra"]
+        if not all(c in df.columns for c in need): return pd.DataFrame(), "INVALID_COLUMNS"
+        
+        df["HS"] = df["HS"].apply(clean_hs)
+        df["Tahun"] = df["Tahun"].astype(str).str.strip()
+        df["_mitra_n"] = df["Mitra"].apply(normalize_negara)
+        mitra_n = normalize_negara(mitra)
+        
+        df_f = df[(df["_mitra_n"] == mitra_n) & (df["Tahun"] == str(tahun))].copy()
+        if df_f.empty:
+            tahun_ada = df[df["_mitra_n"] == mitra_n]["Tahun"].unique().tolist()
+            if tahun_ada: return pd.DataFrame(), f"DATA_EMPTY_TAHUN|{','.join(sorted(tahun_ada))}"
+            return pd.DataFrame(), "DATA_EMPTY"
+            
+        col = "Impor_Mitra" if str(sumber) == "1" else "Ekspor_Mitra"
+        df_f[col] = pd.to_numeric(df_f[col], errors="coerce").fillna(0)
+        df_out = df_f.groupby("HS", as_index=False)[col].sum().rename(columns={col: "Trademap_Value"})
+        return df_out, "SUCCESS"
+    except Exception as e:
+        return pd.DataFrame(), str(e)
+
+@st.cache_data(ttl=3600)
+def bop_query(sql, params=()):
+    if not os.path.exists(BOP_DB_PATH): return pd.DataFrame()
+    try:
+        with sqlite3.connect(BOP_DB_PATH) as conn:
+            return pd.read_sql_query(sql, conn, params=params)
+    except Exception:
+        return pd.DataFrame()
+
+def bop_latest():
+    df = bop_query("""SELECT period FROM bop_quarterly WHERE value_mn_usd IS NOT NULL ORDER BY year DESC, quarter DESC LIMIT 1""")
+    return df["period"].iloc[0] if not df.empty else "-"
+
+def bop_latest_val(item_id):
+    df = bop_query("""SELECT value_mn_usd FROM bop_quarterly WHERE item_id=? AND value_mn_usd IS NOT NULL ORDER BY year DESC, quarter DESC LIMIT 1""", (item_id,))
+    return float(df["value_mn_usd"].iloc[0]) if not df.empty else None
+
+def bop_series(item_ids, y1, y2, freq):
+    ph = ",".join("?" * len(item_ids))
+    sql = f"""SELECT item_id, keterangan, items_en, year, quarter, period, value_mn_usd
+              FROM bop_quarterly WHERE item_id IN ({ph}) AND year >= ? AND year <= ? ORDER BY item_id, year, quarter"""
+    df = bop_query(sql, tuple(item_ids) + (y1, y2))
+    if df.empty or freq == "quarterly": return df
+    
+    parts = []
+    ratio = {54, 55, 56, 57, 58}
+    for iid, grp in df.groupby("item_id"):
+        if iid in ratio: r = grp[grp["quarter"] == "Q4"].copy()
+        else: r = grp.groupby(["item_id","keterangan","items_en","year"], as_index=False)["value_mn_usd"].sum()
+        parts.append(r)
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+
+def calculate_ews(df):
+    if df.empty: return df
+    df["harga"] = df.apply(lambda row: row["value"] / row["berat"] if row.get("berat", 0) > 0 else 0, axis=1)
+    m_val, s_val = df["value"].mean(), df["value"].std()
+    df["z_score"] = 0 if pd.isna(s_val) or s_val == 0 else (df["value"] - m_val) / s_val
+    df_vh = df[df["harga"] > 0]
+    m_h, s_h = (df_vh["harga"].mean(), df_vh["harga"].std()) if not df_vh.empty else (0, 0)
+    df["z_score_harga"] = df.apply(lambda row: 0 if pd.isna(s_h) or s_h == 0 or row["harga"] == 0 else (row["harga"] - m_h) / s_h, axis=1)
+    
+    df["status_ews"] = "Normal"
+    df.loc[df["z_score"] >  1.5, "status_ews"] = "🔴 Batas Atas Nilai"
+    df.loc[df["z_score"] < -0.5, "status_ews"] = "🟡 Batas Bawah Nilai"
+    df.loc[df["z_score_harga"] > 2.0, "status_ews"] = "🟣 Anomali Harga"
+    mask = (df["z_score"] > 1.5) & (df["z_score_harga"] > 2.0)
+    df.loc[mask, "status_ews"] = "🚨 KRITIS: Spike"
+    return df
 
 def apply_matlab_transformation(series, j1, j2, j3, freq='M'):
     out = series.copy().astype(float)
@@ -466,45 +683,22 @@ def run_full_dfm_replication():
             })
         return pd.DataFrame(results_table)
     except Exception as e:
-        st.error(f"Error Replikasi DFM: {e}")
         return pd.DataFrame()
 
 
 # ==========================================
-# 4. UI HEADER & MENU (DI ATAS HORIZONTAL)
+# MAIN UI: HEADER & MENU
 # ==========================================
 st.markdown("""
 <style>
 [data-testid="stSidebar"] { background:#ffffff; border-right:1px solid #e1e4e8; }
-.main-header {
-    background: linear-gradient(135deg, #1d4ed8, #2563eb);
-    color: white; padding: 14px 20px; border-radius: 10px;
-    margin-bottom: 16px; display: flex; align-items: center; gap: 14px;
-}
-.logo-box {
-    background: white; color: #1d4ed8; width: 38px; height: 38px;
-    border-radius: 7px; display: flex; align-items: center;
-    justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0;
-}
+.main-header { background: linear-gradient(135deg, #1d4ed8, #2563eb); color: white; padding: 14px 20px; border-radius: 10px; margin-bottom: 16px; display: flex; align-items: center; gap: 14px; }
+.logo-box { background: white; color: #1d4ed8; width: 38px; height: 38px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0; }
 .hdr-title { font-size: 17px; font-weight: 700; }
 .hdr-sub   { font-size: 12px; opacity: 0.8; margin-top: 2px; }
-.live-badge {
-    margin-left: auto; background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.5);
-    padding: 5px 14px; border-radius: 20px;
-    font-size: 12px; font-weight: 700; white-space: nowrap;
-}
-.disclaimer {
-    background: #fef3c7; border: 1px solid #d97706; color: #92400e;
-    padding: 10px 16px; border-radius: 7px;
-    font-size: 13px; font-weight: 600; margin-bottom: 14px;
-}
-div[data-testid="metric-container"] > div { font-family: monospace; }
+.live-badge { margin-left: auto; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.5); padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify-content: center; background: #f8f9fa; padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb;}
 </style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
 <div class="main-header">
     <div class="logo-box">ID</div>
     <div>
@@ -515,17 +709,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown(
-    '<div class="disclaimer">&#9888;&#65039; <strong>Disclaimer:</strong>'
-    ' Modul Sektor Eksternal dan Daerah masih dalam tahap pengembangan.</div>',
-    unsafe_allow_html=True,
-)
-
 main_menu = st.radio(
     "Pilih Modul Analisis:",
     [
         "📊 Makro Nasional (DFM)", 
-        "🌍 Sektor Eksternal & Fiskal", 
+        "🌍 Analisis Sensitivitas", 
+        "🚢 Intelijen Komoditas & Eksternal", 
         "📍 Ekonomi Daerah (WIP)", 
         "🧠 AI Executive Brief (Synthesis)"
     ],
@@ -536,19 +725,14 @@ main_menu = st.radio(
 st.divider()
 
 # =========================================================================
-# MODUL 1: MAKRO NASIONAL (DFM)
+# CONTROLLER TABS
 # =========================================================================
+
 if main_menu == "📊 Makro Nasional (DFM)":
     
     st.markdown("""
     <style>
-    .glass-card {
-        background: rgba(255, 255, 255, 0.65);
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
-        backdrop-filter: blur(10px);
-        border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7);
-        padding: 24px; margin-bottom: 24px;
-    }
+    .glass-card { background: rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); padding: 24px; margin-bottom: 24px; }
     .card-title { font-size: 13px; color: #444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .card-value { font-size: 26px; color: #111; font-weight: 800; margin: 4px 0; }
     .badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; margin-right: 6px; }
@@ -783,7 +967,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
         selected_daily_view = st.radio("Pilih Mode Tampilan Pasar:", ["Data Berjalan", "Data Rata-Rata"], horizontal=True, key="daily_view_toggle")
         
         daily_summary_list, daily_berjalan_list, daily_rata_list = [], [], []
-        daily_summary_str = daily_berjalan_str = daily_rata_str = "Data harian tidak tersedia."
+        daily_summary_str = "Data harian tidak tersedia."
 
         if 'df_daily' in locals() and df_daily is not None:
             group_keuangan = ['IHSG', 'Saham Daily', 'Obligasi Daily']
@@ -865,14 +1049,6 @@ if main_menu == "📊 Makro Nasional (DFM)":
             
         st.session_state['mac_daily'] = daily_summary_str
         st.markdown("<br>", unsafe_allow_html=True)
-
-        ATURAN_WARNA = {
-            'PMI Manufaktur Negara Berkembang': True, 'Jumlah Uang Yang Beredar': True, 
-            'Penjualan Mobil': True, 'Penjualan semen': True, 'Ekspor Barang': True, 
-            'Impor Barang Modal': True, 'Impor Bahan Baku': True, 'Kredit Perbankan': True, 
-            'Penjualan Motor': True, 'Indeks Keyakinan Konsumen': True, 'Impor Barang Konsumsi': True, 
-            'Inflasi': False, 'Nilai Tukar terhadap Dolar AS': False, 'Suku Bunga': False
-        }
 
         st.markdown("### 🔍 Deep Dive: Indikator Makro Bulanan")
         df_makro['Tanggal'] = pd.to_datetime(df_makro['Tanggal'])
@@ -1055,21 +1231,16 @@ if main_menu == "📊 Makro Nasional (DFM)":
         else: st.info("Belum ada data bulanan untuk ditampilkan.")
         st.markdown('</div>', unsafe_allow_html=True)
 
+
 # =========================================================================
-# MODUL 2: SEKTOR EKSTERNAL & FISKAL
+# MODUL 2: ANALISIS SENSITIVITAS (SEKTOR EKSTERNAL & FISKAL)
 # =========================================================================
-elif main_menu == "🌍 Sektor Eksternal & Fiskal":
-    
+elif main_menu == "🌍 Analisis Sensitivitas":
     with st.sidebar:
         st.markdown("### 🇮🇩 BI-BAPPENAS")
         st.divider()
-
         st.markdown("**BASELINE SKENARIO**")
-        scen = st.radio(
-            "Skenario", ["med", "high"], horizontal=True,
-            format_func=lambda x: "Med" if x == "med" else "High",
-        )
-
+        scen = st.radio("Skenario", ["med", "high"], horizontal=True, format_func=lambda x: "Med" if x == "med" else "High")
         st.markdown("**TAHUN PROYEKSI**")
         yr = st.select_slider("Tahun", options=YEARS, value=2026)
 
@@ -1080,13 +1251,8 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         st.divider()
         st.markdown("**PRESET SKENARIO CEPAT**")
         preset = st.selectbox("Pilih preset", [
-            "-- pilih --",
-            "📊 Base Med",
-            "📈 Base High",
-            "📉 Depresiasi (NT 19.500)",
-            "🛢 Minyak Rendah ($40)",
-            "🔥 Minyak Tinggi ($100)",
-            "⚡ Twin Shock (NT 20.000, ICP $100)",
+            "-- pilih --", "📊 Base Med", "📈 Base High", "📉 Depresiasi (NT 19.500)",
+            "🛢 Minyak Rendah ($40)", "🔥 Minyak Tinggi ($100)", "⚡ Twin Shock (NT 20.000, ICP $100)",
         ])
 
         if   "Depresiasi" in preset: nt_init, oil_init = 19_500,       icp_default
@@ -1096,21 +1262,12 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         else:                        nt_init, oil_init = nt_default,  icp_default
 
         st.divider()
-
         st.markdown("**NILAI TUKAR (Rp/USD)**")
-        nt = st.number_input(
-            "NT", min_value=10_000, max_value=30_000,
-            value=nt_init, step=50,
-            label_visibility="collapsed",
-        )
+        nt = st.number_input("NT", min_value=10_000, max_value=30_000, value=nt_init, step=50, label_visibility="collapsed")
         st.caption(f"Baseline {scen.upper()} {yr}: Rp{nt_default:,} — nilai naik = depresiasi Rupiah")
 
         st.markdown("**HARGA MINYAK ICP (USD/bbl)**")
-        oil = st.number_input(
-            "ICP", min_value=20, max_value=150,
-            value=oil_init, step=1,
-            label_visibility="collapsed",
-        )
+        oil = st.number_input("ICP", min_value=20, max_value=150, value=oil_init, step=1, label_visibility="collapsed")
         st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
 
         b_sim, s_sim = simulate_eksternal(nt, oil, yr, scen)
@@ -1129,7 +1286,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             sign  = "+" if dv >= 0 else ""
             color = delta_color(dv)
             st.markdown(f"**{lbl}**: :{color}[{sign}{dv:.2f}{sfx}]")
-
         st.caption(f"Skenario: {scen.upper()} | NT Rp{nt:,} | ICP ${oil}")
 
     st.markdown("### 🌍 Dashboard Sensitivitas Eksternal & Fiskal RI")
@@ -1184,24 +1340,17 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         cols = st.columns(6)
         for col, (lbl, val, unit, dv, sfx) in zip(cols, bop_kpis):
             with col:
-                st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}",
-                          delta_color=metric_delta_color(dv))
+                st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}", delta_color=metric_delta_color(dv))
 
         c1, c2, c3 = st.columns(3)
-
         with c1:
-            ca_bar_colors = [
-                "rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)"
-                for v in R["ca"]["s"]
-            ]
+            ca_bar_colors = ["rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)" for v in R["ca"]["s"]]
             fig = go.Figure([
                 bar_trace("Baseline", YL, R["ca"]["b"], C["blue"], opacity=0.35),
-                go.Bar(name="Simulasi", x=YL, y=R["ca"]["s"],
-                       marker_color=ca_bar_colors, marker_line_width=0),
+                go.Bar(name="Simulasi", x=YL, y=R["ca"]["s"], marker_color=ca_bar_colors, marker_line_width=0),
             ])
             fig.update_layout(**fig_layout("Transaksi Berjalan (Miliar USD)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
+            st.plotly_chart(fig, use_container_width=True)
         with c2:
             fig = go.Figure([
                 bar_trace("Exp Baseline", YL, R["exp"]["b"], C["blue"], opacity=0.35),
@@ -1210,19 +1359,16 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 bar_trace("Imp Simulasi", YL, R["imp"]["s"], C["red2"], opacity=0.75),
             ])
             fig.update_layout(**fig_layout("Ekspor vs Impor Barang (Miliar USD)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
+            st.plotly_chart(fig, use_container_width=True)
         with c3:
             fig = go.Figure([
                 line_base_trace("Baseline", YL, R["reserves"]["b"]),
-                line_trace("Simulasi", YL, R["reserves"]["s"], C["orange"],
-                           fill="tozeroy", fillcolor="rgba(234,88,12,0.08)"),
+                line_trace("Simulasi", YL, R["reserves"]["s"], C["orange"], fill="tozeroy", fillcolor="rgba(234,88,12,0.08)"),
             ])
             fig.update_layout(**fig_layout("Cadangan Devisa (Miliar USD)"))
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
 
         c4, c5 = st.columns(2)
-
         with c4:
             tb_b   = [SCEN[scen]["tradebal"][y] for y in YEARS]
             svc_b  = [SCEN[scen]["svcbal"][y]   for y in YEARS]
@@ -1235,8 +1381,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 bar_trace("Pend. Sekunder", YL, sec_b,  C["green"],  opacity=0.75),
             ])
             fig.update_layout(**fig_layout("Komponen Neraca Berjalan (Miliar USD)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
+            st.plotly_chart(fig, use_container_width=True)
         with c5:
             nt_range = list(range(12_000, 26_500, 500))
             ca_sens  = [round(simulate_eksternal(n, oil, yr, scen)[1]["ca"], 2) for n in nt_range]
@@ -1244,24 +1389,14 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 go.Scatter(
                     x=[n / 1000 for n in nt_range], y=ca_sens,
                     mode="lines", name="CA (Miliar USD)",
-                    line=dict(color=C["blue"], width=2),
-                    fill="tozeroy", fillcolor="rgba(37,99,235,0.08)",
+                    line=dict(color=C["blue"], width=2), fill="tozeroy", fillcolor="rgba(37,99,235,0.08)"
                 ),
-                dot_trace("Posisi kini", [nt / 1000], [round(s_sim["ca"], 2)]),
+                dot_trace("Posisi kini", [nt / 1000], [round(s_sim["ca"], 2)])
             ])
-            fig.update_layout(**fig_layout(
-                "Sensitivitas CA vs Nilai Tukar",
-                xaxis_title="NT (ribu Rp)", yaxis_title="CA (Miliar USD)",
-            ))
-            st.plotly_chart(fig, width="stretch")
-
-        st.info(
-            "📌 **Catatan:** Data BOP dari sheet 3.1 BOP. Elastisitas ekspor non-migas: 0.15xNT; ekspor migas: 0.80xICP. "
-            "Impor non-migas: -0.25xNT; impor migas: 0.95xICP. Caddev = baseline + Delta Total BOP."
-        )
+            fig.update_layout(**fig_layout("Sensitivitas CA vs Nilai Tukar", xaxis_title="NT (ribu Rp)", yaxis_title="CA (Miliar USD)"))
+            st.plotly_chart(fig, use_container_width=True)
 
     with tab_gdp:
-        
         gdp_kpis = [
             ("🟢 PDB Growth",     f"{s_sim['gdp']:.2f}%",  s_sim["gdp"]-b_sim["gdp"],  " pp"),
             ("🔵 Konsumsi RT",    f"{s_sim['cons']:.2f}%", s_sim["cons"]-b_sim["cons"]," pp"),
@@ -1276,15 +1411,13 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 st.metric(lbl, val, delta_str, delta_color=metric_delta_color(dv))
 
         c1, c2, c3 = st.columns(3)
-
         with c1:
             fig = go.Figure([
                 line_base_trace("Baseline", YL, R["gdp"]["b"]),
                 line_trace("Simulasi", YL, R["gdp"]["s"], C["green"], fill="tozeroy", fillcolor="rgba(22,163,74,0.08)"),
             ])
             fig.update_layout(**fig_layout("Pertumbuhan PDB Riil (%)"))
-            st.plotly_chart(fig, width="stretch")
-
+            st.plotly_chart(fig, use_container_width=True)
         with c2:
             fig = go.Figure([
                 bar_trace("Exp B&J Baseline", YL, R["gexp"]["b"], C["blue"], opacity=0.35),
@@ -1293,8 +1426,7 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 bar_trace("Imp B&J Simulasi", YL, R["gimp"]["s"], C["red2"], opacity=0.75),
             ])
             fig.update_layout(**fig_layout("Ekspor & Impor Riil B&J (%)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
+            st.plotly_chart(fig, use_container_width=True)
         with c3:
             nt_range2 = list(range(12_000, 26_500, 500))
             gdp_sens  = [round(simulate_eksternal(n, oil, yr, scen)[1]["gdp"], 2) for n in nt_range2]
@@ -1302,17 +1434,15 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 go.Scatter(
                     x=[n / 1000 for n in nt_range2], y=gdp_sens,
                     mode="lines", name="PDB Growth (%)",
-                    line=dict(color=C["green"], width=2),
-                    fill="tozeroy", fillcolor="rgba(22,163,74,0.08)",
+                    line=dict(color=C["green"], width=2), fill="tozeroy", fillcolor="rgba(22,163,74,0.08)"
                 ),
-                dot_trace("Posisi kini", [nt / 1000], [round(s_sim["gdp"], 2)]),
+                dot_trace("Posisi kini", [nt / 1000], [round(s_sim["gdp"], 2)])
             ])
             fig.update_layout(**fig_layout("Sensitivitas PDB vs Nilai Tukar", xaxis_title="NT (ribu Rp)", yaxis_title="PDB Growth (%)"))
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
 
         tx = s_sim["tx"]
         st.markdown("#### 🔴 MEKANISME TRANSMISI: NILAI TUKAR & HARGA MINYAK → PDB")
-        
         col_nt, col_icp = st.columns(2)
 
         def color_val(val, inverse=False):
@@ -1377,12 +1507,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             """
             st.markdown(html_icp, unsafe_allow_html=True)
 
-        st.markdown("""
-        <div style='font-size: 12.5px; color: #475569; background: #fffbeb; padding: 12px 15px; border-radius: 8px; border: 1px solid #fde68a; line-height: 1.6; margin-top: 15px;'>
-            ⚠️ <strong>Catatan arah:</strong> Indonesia adalah <em>net importir</em> BBM sejak ~2004. Kenaikan harga minyak & depresiasi NT secara netto <strong>memperburuk</strong> CA (impor mahal dalam USD, ekspor migas tidak cukup mengimbangi) dan menekan PDB melalui jalur inflasi impor yang memukul konsumsi rumah tangga dan investasi.
-        </div>
-        """, unsafe_allow_html=True)
-
     with tab_apbn:
         apbn_kpis = [
             ("🔵 Pendapatan Negara", f"Rp {s_sim['rev']:.0f} T",  s_sim["rev"]-b_sim["rev"],       " T"),
@@ -1393,48 +1517,38 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
         ]
         cols = st.columns(5)
         for col, (lbl, val, dv, sfx) in zip(cols, apbn_kpis):
-            with col:
-                st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}",
-                          delta_color=metric_delta_color(dv))
+            with col: st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}", delta_color=metric_delta_color(dv))
 
-        # Fiscal bar
         st.markdown("##### 📊 Posisi Defisit APBN vs Batas 3% PDB")
         limit = 3.0
         col_b, col_s = st.columns(2)
         with col_b:
-            alert_b = "🔴" if abs(b_sim["defpdb"]) > limit else "🟢"
+            alert_b = "🔴" if abs(b_sim['defpdb']) > limit else "🟢"
             st.markdown(f"**Baseline {alert_b}:** `{b_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(b_sim["defpdb"]) / limit, 1.0))
         with col_s:
-            alert_s = "🔴" if abs(s_sim["defpdb"]) > limit else "🟢"
+            alert_s = "🔴" if abs(s_sim['defpdb']) > limit else "🟢"
             st.markdown(f"**Simulasi {alert_s}:** `{s_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(s_sim["defpdb"]) / limit, 1.0))
-        st.caption("Batas legal: -3.0% PDB (UU Keuangan Negara)")
 
         c1, c2, c3 = st.columns(3)
-
         with c1:
-            def_colors = [
-                "rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)"
-                for v in R["def"]["s"]
-            ]
+            def_colors = ["rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)" for v in R["def"]["s"]]
             fig = go.Figure([
                 bar_trace("Baseline", YL, R["def"]["b"], C["purple"], opacity=0.35),
-                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0),
+                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0)
             ])
             fig.update_layout(**fig_layout("Defisit APBN (Rp T)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
+            st.plotly_chart(fig, use_container_width=True)
         with c2:
             fig = go.Figure([
                 bar_trace("Pendapatan Baseline", YL, R["rev"]["b"], C["blue"], opacity=0.35),
                 bar_trace("Pendapatan Simulasi", YL, R["rev"]["s"], C["teal"], opacity=0.85),
                 bar_trace("Belanja Baseline",    YL, R["bel"]["b"], C["red"],  opacity=0.25),
-                bar_trace("Belanja Simulasi",    YL, R["bel"]["s"], C["red2"], opacity=0.75),
+                bar_trace("Belanja Simulasi",    YL, R["bel"]["s"], C["red2"], opacity=0.75)
             ])
             fig.update_layout(**fig_layout("Pendapatan vs Belanja (Rp T)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
+            st.plotly_chart(fig, use_container_width=True)
         with c3:
             icp_range = list(range(30, 135, 5))
             def_sens  = [round(simulate_eksternal(nt, ic, yr, scen)[1]["def"], 0) for ic in icp_range]
@@ -1447,66 +1561,43 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
                 dot_trace("Posisi kini", [f"${oil}"], [round(s_sim["def"], 0)])
             ])
             fig.update_layout(**fig_layout("Sensitivitas Defisit vs ICP", xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)"))
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
 
         c4, c5 = st.columns(2)
-
         with c4:
             fig = go.Figure([
-                bar_trace("Subsidi Energi Baseline", YL, R["sube"]["b"],  C["red"],     opacity=0.35),
-                bar_trace("Subsidi Energi Simulasi", YL, R["sube"]["s"],  C["red2"],    opacity=0.85),
-                bar_trace("Bunga Utang Baseline",    YL, R["bunga"]["b"], C["orange"],  opacity=0.35),
-                bar_trace("Bunga Utang Simulasi",    YL, R["bunga"]["s"], C["orange2"], opacity=0.85),
+                bar_trace("Subsidi Energi Baseline", YL, R["sube"]["b"],  C["red"], opacity=0.35),
+                bar_trace("Subsidi Energi Simulasi", YL, R["sube"]["s"],  C["red2"], opacity=0.85),
+                bar_trace("Bunga Utang Baseline", YL, R["bunga"]["b"], C["orange"], opacity=0.35),
+                bar_trace("Bunga Utang Simulasi", YL, R["bunga"]["s"], C["orange2"], opacity=0.85)
             ])
             fig.update_layout(**fig_layout("Komponen Belanja Utama (Rp T)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
-
+            st.plotly_chart(fig, use_container_width=True)
         with c5:
             fig = go.Figure([
                 bar_trace("Pajak Baseline", YL, R["pajak"]["b"], C["blue"], opacity=0.35),
-                bar_trace("Pajak Simulasi", YL, R["pajak"]["s"], C["teal"], opacity=0.85),
+                bar_trace("Pajak Simulasi", YL, R["pajak"]["s"], C["teal"], opacity=0.85)
             ])
             fig.update_layout(**fig_layout("Komponen Penerimaan Pajak (Rp T)", barmode="group"))
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
 
         ax = s_sim["ax"]
         col_rev, col_bel = st.columns(2)
-
         with col_rev:
             st.markdown("##### 🔵 Dampak ke Sisi Pendapatan")
             st.dataframe(pd.DataFrame({
-                "Komponen": [
-                    "PPh Migas (ICP sensitif)",
-                    "PNBP SDA Migas (ICP sensitif)",
-                    "Bea Keluar (NT + komoditas)",
-                    "Delta Total Pendapatan",
-                ],
-                "Delta (Rp T)": [
-                    round(ax["pph"],   2),
-                    round(ax["sda"],   2),
-                    round(ax["bea"],   2),
-                    round(ax["rev"],   2),
-                ],
-            }), hide_index=True, width="stretch")
-
+                "Komponen": ["PPh Migas (ICP sensitif)", "PNBP SDA Migas (ICP sensitif)", "Bea Keluar (NT + komoditas)", "Delta Total Pendapatan"],
+                "Delta (Rp T)": [round(ax["pph"],2), round(ax["sda"],2), round(ax["bea"],2), round(ax["rev"],2)],
+            }), hide_index=True, use_container_width=True)
         with col_bel:
             st.markdown("##### 🔴 Tekanan Sisi Belanja")
             st.dataframe(pd.DataFrame({
-                "Komponen": [
-                    "Subsidi Energi (ICP naik + NT melemah)",
-                    "Bunga Utang Valas (NT melemah)",
-                    "Delta Total Belanja",
-                ],
-                "Delta (Rp T)": [
-                    round(ax["sube"],  2),
-                    round(ax["bunga"], 2),
-                    round(ax["bel"],   2),
-                ],
-            }), hide_index=True, width="stretch")
+                "Komponen": ["Subsidi Energi (ICP naik + NT melemah)", "Bunga Utang Valas (NT melemah)", "Delta Total Belanja"],
+                "Delta (Rp T)": [round(ax["sube"],2), round(ax["bunga"],2), round(ax["bel"],2)],
+            }), hide_index=True, use_container_width=True)
 
     with tab_table:
         st.markdown(f"#### Tabel Lengkap BOP, GDP & APBN — Baseline vs Simulasi (Tahun {yr})")
-
         table_def = [
             ("I. Transaksi Berjalan",          "ca",        "ca",        2,   "Miliar USD"),
             ("  Neraca Barang",                "tradebal",  "tradebal",  2,   "Miliar USD"),
@@ -1535,7 +1626,6 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             ("  Defisit / PDB",                "defpdb",    "defpdb",    2,   "%"),
             ("  PDB Nominal",                  "pdb",       "pdb",       0,   "Rp T"),
         ]
-
         rows_tbl = []
         for lbl, bk, sk, dec, unit in table_def:
             bv   = b_sim.get(bk) or 0
@@ -1544,25 +1634,172 @@ elif main_menu == "🌍 Sektor Eksternal & Fiskal":
             pct  = (diff / abs(bv) * 100) if bv != 0 else 0
             sign = "+" if diff >= 0 else ""
             rows_tbl.append({
-                "Indikator": lbl,
-                "Baseline":  round(bv,   dec),
-                "Simulasi":  round(sv,   dec),
-                "Delta Abs": f"{sign}{round(diff, dec)}",
-                "Delta %":   f"{sign}{pct:.1f}%",
-                "Satuan":    unit,
+                "Indikator": lbl, "Baseline": round(bv, dec), "Simulasi": round(sv, dec),
+                "Delta Abs": f"{sign}{round(diff, dec)}", "Delta %": f"{sign}{pct:.1f}%", "Satuan": unit,
             })
-
         st.dataframe(pd.DataFrame(rows_tbl), hide_index=True, use_container_width=True, height=720)
 
+
 # =========================================================================
-# MODUL 3: EKONOMI DAERAH (WIP)
+# MODUL 3: INTELIJEN KOMODITAS & EKSTERNAL
+# =========================================================================
+elif main_menu == "🚢 Intelijen Komoditas & Eksternal":
+    with st.sidebar:
+        st.markdown("### 🔍 PARAMETER INTELIJEN")
+        f_tahun_b = st.selectbox("Tahun Data", reversed(TAHUN_TERSEDIA_BPS), index=1, key="exim_yr")
+        f_per_label = st.selectbox("Periode Waktu", list(PERIODE_OPSI.keys()), key="exim_per")
+        f_per = PERIODE_OPSI[f_per_label]
+        f_smb_label = st.radio("Arah Dagang", ["Ekspor", "Impor"], key="exim_dir")
+        f_smb = "1" if f_smb_label == "Ekspor" else "2"
+        f_unt = st.radio("Skala Unit", ["USD", "Miliar USD"], key="exim_unit")
+        
+        tipe_b, bulan_b = get_periode_params(f_per)
+        df_exim_raw = fetch_bps_db(f_smb, str(f_tahun_b), tipe_b, bulan_b)
+        if not df_exim_raw.empty:
+            st.session_state['exim_data_state'] = df_exim_raw
+            st.session_state['exim_meta_state'] = {"tahun": f_tahun_b, "sumber": f_smb_label, "sumber_kode": f_smb, "unit": f_unt, "tipe": tipe_b, "bulan": bulan_b}
+        else:
+            st.session_state['exim_data_state'] = pd.DataFrame()
+            st.session_state['exim_meta_state'] = {}
+
+    sub_tab1, sub_tab2, sub_tab3, sub_tab4, sub_tab5 = st.tabs([
+        "📊 Ringkasan BPS", "🗄️ Data Lengkap", "⚠️ Early Warning System", "🪞 Mirroring", "🏦 Neraca Pembayaran"
+    ])
+    
+    df_m3 = st.session_state.get('exim_data_state', pd.DataFrame())
+    m3_meta = st.session_state.get('exim_meta_state', {})
+    
+    if not df_m3.empty:
+        div_m3 = 1e9 if m3_meta['unit'] == "Miliar USD" else 1
+        df_m3_c = df_m3.copy()
+        df_m3_c["value"] = df_m3_c["value"] / div_m3
+        
+        kmd_m3 = df_m3_c.groupby("kodehs", as_index=False)[["value","berat"]].sum().sort_values("value", ascending=False)
+        neg_m3 = df_m3_c.groupby("negara", as_index=False)["value"].sum().sort_values("value", ascending=False)
+        kmd_m3["deskripsi"] = kmd_m3["kodehs"].map(HS_DESC).fillna("Lainnya")
+        kmd_m3["label"] = kmd_m3["kodehs"].astype(str) + " - " + kmd_m3["deskripsi"].str[:15]
+
+    with sub_tab1:
+        if df_m3.empty:
+            st.info("👈 Silakan konfigurasikan parameter Intelijen Perdagangan di sidebar kiri.")
+        else:
+            sk1, sk2, sk3 = st.columns(3)
+            c_g = "#3fb950" if m3_meta['sumber'] == "Ekspor" else "#f78166"
+            with sk1: kpi_card(f"TOTAL {m3_meta['sumber'].upper()}", f"{df_m3_c['value'].sum():,.2f} {m3_meta['unit']}", c_g)
+            with sk2: kpi_card("KOMODITAS UTAMA (HS)", kmd_m3.iloc[0]["kodehs"] if not kmd_m3.empty else "-", "#58a6ff")
+            with sk3: kpi_card("MITRA STRATEGIS UTAMA", neg_m3.iloc[0]["negara"] if not neg_m3.empty else "-", "#e3b341")
+            
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+            
+            ml_l, ml_r = st.columns(2)
+            with ml_l:
+                section_title("ANALISIS TREN HISTORIS")
+                h_c1, h_c2, h_c3, h_c4 = st.columns([2,2,2,2])
+                hs_h = h_c1.selectbox("HS Code", options=HS_ALL, index=26, key="m3_hs_sel")
+                neg_h = h_c2.selectbox("Mitra", options=["Semua Negara"] + PARTNER_LIST, key="m3_neg_sel")
+                met_h = h_c3.radio("Metrik", ["Nilai", "YoY %"], horizontal=True, key="m3_met_sel")
+                btn_h = h_c4.button("Tampilkan", use_container_width=True, key="m3_btn_hist")
+                
+                if btn_h:
+                    df_h_raw = fetch_hist_bps_db(m3_meta['sumber_kode'], hs_h, m3_meta['tipe'], m3_meta['bulan'])
+                    if not df_h_raw.empty:
+                        if neg_h != "Semua Negara": df_h_raw = df_h_raw[df_h_raw["negara"] == normalize_negara(neg_h)]
+                        df_h_g = df_h_raw.groupby("tahun", as_index=False)["value"].sum().sort_values("tahun")
+                        df_h_g["Tahun"], df_h_g["Value"] = df_h_g["tahun"].astype(str), df_h_g["value"] / div_m3
+                        if met_h == "YoY %":
+                            df_h_g["Value"] = df_h_g["Value"].pct_change() * 100
+                            fig_m3_h = px.line(df_h_g, x="Tahun", y="Value", markers=True, title=f"YoY (%) - HS {hs_h}")
+                        else:
+                            fig_m3_h = px.line(df_h_g, x="Tahun", y="Value", markers=True, title=f"Tren Nilai ({m3_meta['unit']}) - HS {hs_h}")
+                        fig_m3_h.update_layout(xaxis=dict(type='category'), margin=dict(l=0,r=0,t=30,b=0))
+                        st.plotly_chart(fig_m3_h, use_container_width=True)
+            with ml_r:
+                section_title("STRUKTUR KOMODITAS UNGGULAN (TOP 15)")
+                fig_k3 = px.bar(kmd_m3.head(15), y="label", x="value", orientation='h')
+                fig_k3.update_yaxes(categoryorder='total ascending', type='category')
+                fig_k3.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=350)
+                fig_k3.update_traces(marker_color=c_g)
+                st.plotly_chart(fig_k3, use_container_width=True)
+
+    with sub_tab2:
+        if not df_m3.empty:
+            section_title("TABEL PENUH DATA PERDAGANGAN BPS")
+            full_m3 = df_m3_c.groupby(["negara","kodehs"], as_index=False)[["value","berat"]].sum()
+            full_m3["deskripsi"] = full_m3["kodehs"].map(HS_DESC).fillna("Lainnya")
+            st.download_button(label="Download CSV Table", data=full_m3.to_csv(index=False).encode('utf-8'), file_name=f"BPS_Intel_{m3_meta['sumber']}.csv", mime='text/csv')
+            st.dataframe(full_m3, use_container_width=True, hide_index=True)
+
+    with sub_tab3:
+        if not df_m3.empty:
+            section_title("DETEKSI STRUKTUR ANOMALI & EW_METRICS")
+            ews_m3 = calculate_ews(kmd_m3.copy())
+            def style_ews_m3(val):
+                c = '#ffcccb' if 'Atas' in str(val) else '#ffe8b5' if 'Bawah' in str(val) else '#dcbdfb' if 'Harga' in str(val) else '#ff7b72' if 'KRITIS' in str(val) else ''
+                return f'background-color: {c}; color: black' if c else ''
+            st.dataframe(ews_m3[[col for col in ews_m3.columns if col != "label"]].style.map(style_ews_m3, subset=['status_ews']), use_container_width=True, hide_index=True)
+
+    with sub_tab4:
+        section_title("KOMPARASI ASIMETRI REKONSILIASI KEBOCORAN / MIRRORING")
+        if not df_m3.empty:
+            cm_c1, cm_c2, cm_c3 = st.columns([2,2,1])
+            m_mitra = cm_c1.selectbox("Mitra Rekonsiliasi", PARTNER_LIST, key="m3_mirror_mitra")
+            m_unit = cm_c2.radio("Satuan Skala", ["USD", "Juta USD"], horizontal=True, key="m3_mirror_unit")
+            btn_m = cm_c3.button("JALANKAN AUDIT ASIMETRI", type="primary", use_container_width=True, key="m3_run_mirror")
+            
+            if btn_m:
+                div_m = 1e6 if m_unit == "Juta USD" else 1
+                df_tm, status = load_trademap(m_mitra, m3_meta['tahun'], m3_meta['sumber_kode'])
+                if status == "SUCCESS":
+                    df_bps_m = df_m3[df_m3["negara"] == normalize_negara(m_mitra)].copy()
+                    df_bps_m = df_bps_m.groupby("kodehs", as_index=False)["value"].sum().rename(columns={"kodehs":"HS","value":"BPS_Value"})
+                    df_merge = pd.merge(df_bps_m, df_tm, on="HS", how="outer").fillna(0)
+                    df_merge[["BPS_Value", "Trademap_Value"]] /= div_m
+                    df_merge["Selisih"] = df_merge["Trademap_Value"] - df_merge["BPS_Value"]
+                    df_merge["Deskripsi"] = df_merge["HS"].map(HS_DESC).fillna("Lainnya")
+                    
+                    st.success("✅ Audit Asimetri Pencatatan Trade Map Selesai.")
+                    lbl_b = "EKSPOR IDN KE" if str(m3_meta['sumber_kode']) == "1" else "IMPOR IDN DARI"
+                    lbl_t = "IMPOR MITRA (TRADE MAP)" if str(m3_meta['sumber_kode']) == "1" else "EKSPOR MITRA (TRADE MAP)"
+                    
+                    kpx1, kpx2, kpx3 = st.columns(3)
+                    with kpx1: kpi_card(f"{lbl_b} {m_mitra.upper()} (BPS)", f"{df_merge['BPS_Value'].sum():,.1f} {m_unit}", "#3fb950")
+                    with kpx2: kpi_card(f"{lbl_t}", f"{df_merge['Trademap_Value'].sum():,.1f} {m_unit}", "#58a6ff")
+                    with kpx3: kpi_card("GAP KEBOCORAN / ASIMETRI PENCATATAN", f"{df_merge['Selisih'].sum():,.1f} {m_unit}", "#e3b341")
+                    
+                    st.dataframe(df_merge[["HS", "Deskripsi", "BPS_Value", "Trademap_Value", "Selisih"]], use_container_width=True, hide_index=True)
+
+    with sub_tab5:
+        if not os.path.exists(BOP_DB_PATH): 
+            st.error("Database bop_indonesia.db tidak tersedia.")
+        else:
+            section_title("SEKI BANK INDONESIA (BALANCE OF PAYMENTS HISTORICAL)")
+            with st.form("m3_seki_form"):
+                cx1, cx2, cx3, cx4, cx5 = st.columns([1,1,1,1,1])
+                s_y1 = cx1.number_input("Tahun Awal", min_value=2004, max_value=2025, value=2015, key="m3_bop_y1")
+                s_y2 = cx2.number_input("Tahun Akhir", min_value=2004, max_value=2025, value=2024, key="m3_bop_y2")
+                s_frq = cx3.selectbox("Frekuensi", ["Kuartalan", "Tahunan"], key="m3_bop_frq")
+                s_uni = cx4.selectbox("Satuan", ["Juta USD", "Miliar USD"], key="m3_bop_uni")
+                btn_s = cx5.form_submit_button("TAMPILKAN BOP", use_container_width=True)
+                
+            if btn_s:
+                f_val = "quarterly" if s_frq == "Kuartalan" else "annual"
+                div_s = 1000 if s_uni == "Miliar USD" else 1
+                needed_ids = [1,2,17,20,23,26,29,32,35,40,41,46,47,48,54,55,56]
+                df_seki = bop_series(needed_ids, s_y1, s_y2, f_val)
+                
+                if not df_seki.empty:
+                    df_seki["nilai"] = df_seki["value_mn_usd"] / div_s
+                    st.dataframe(df_seki[["year", "period", "keterangan", "items_en", "nilai"]], use_container_width=True, hide_index=True)
+
+# =========================================================================
+# MODUL 4: EKONOMI DAERAH (WIP)
 # =========================================================================
 elif main_menu == "📍 Ekonomi Daerah (WIP)":
     st.markdown("### 📍 Command Center: Ekonomi Kewilayahan")
     st.info("🚧 Modul analitik data daerah sedang dalam tahap pengkodingan dan pengembangan lanjutan oleh tim Data Science Bappenas. Silakan kembali lagi nanti.")
 
 # =========================================================================
-# MODUL 4: AI EXECUTIVE BRIEF (SYNTHESIS K/L)
+# MODUL 5: AI EXECUTIVE BRIEF (SYNTHESIS K/L)
 # =========================================================================
 elif main_menu == "🧠 AI Executive Brief (Synthesis)":
     st.markdown("""
@@ -1574,7 +1811,7 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
     st.markdown("### 🧠 AI Policy Synthesis & Executive Brief")
     st.markdown("Modul ini mensintesis data dari seluruh *dashboard* untuk memproduksi rumusan kebijakan lintas sektoral secara makro dan mikro komprehensif.")
 
-    # Data fallback/default diinisialisasi secara aman
+    # Data fallback/default diinisialisasi secara aman, tidak ada peringatan blokir
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     
     mac_view = st.session_state.get('mac_view', '2026')
@@ -1614,7 +1851,6 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                             top_p=0.9,
                             max_output_tokens=8192
                         )
-                        # Mematikan filter ketat agar tidak memotong analisa resiko ekonomi
                         safety_settings = [
                             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -1660,7 +1896,6 @@ STRUKTUR EXECUTIVE BRIEF:
 * **A. Jangka Pendek (Mitigasi & Stabilisasi):** (Tindakan taktis dan intervensi segera untuk meredam syok eksternal, menjaga target PDB tahun berjalan, stabilisasi harga/inflasi mikro, intervensi pasar, subsidi, dan menjaga batas defisit fiskal).
 * **B. Jangka Menengah & Panjang (Reformasi Struktural):** (Kebijakan struktural untuk memperkuat fundamental ekonomi makro, resiliensi rantai pasok/industrialisasi, ketahanan energi, dan penguatan kemandirian sektor unggulan di tingkat daerah).
 """
-                        # MENGGUNAKAN STREAM=TRUE AGAR ANTI-TIMEOUT DAN ANTI-KEPOTONG
                         res = model.generate_content(
                             prompt, 
                             generation_config=generation_config,
@@ -1672,7 +1907,6 @@ STRUKTUR EXECUTIVE BRIEF:
                         for chunk in res:
                             out_text += chunk.text
                             
-                        # Hilangkan hashtag berlebih di awal jika AI membangkang sedikit
                         out_text = out_text.strip()
                         if out_text.startswith("```markdown"):
                             out_text = out_text.replace("```markdown", "").replace("```", "").strip()
@@ -1718,7 +1952,7 @@ STRUKTUR EXECUTIVE BRIEF:
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Executive Brief - Kementerian PPN/Bappenas</title>
                 <style>
-                    @import url('[https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap)');
+                    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
                     
                     body {{ 
                         font-family: 'Plus Jakarta Sans', sans-serif; 
