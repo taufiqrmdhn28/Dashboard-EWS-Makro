@@ -9,3 +9,6 @@ openpyxl
 openai
 markdown
 kaleido
+urllib3
+gdown
+requests
