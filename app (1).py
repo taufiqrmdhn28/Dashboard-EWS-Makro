@@ -269,7 +269,7 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
     s["capbal"]     = b["capbal"]
     s["finbal"]     = b["finbal"]
     
-    # Kalkulasi Delta untuk BOP
+    # Kalkulasi Delta untuk BOP agar 100% konsisten
     delta_trade = s["tradebal"] - b["tradebal"]
     delta_svc = s["svcbal"] - b["svcbal"]
     delta_prim = s["primbal"] - b["primbal"]
@@ -437,7 +437,7 @@ df_target, df_triwulan, df_makro, df_hist_gdp = load_data()
 @st.cache_data(ttl=3600)
 def load_daily_data():
     try:
-        url = "[https://docs.google.com/spreadsheets/d/1wM0lHYqNTgf4Jo4AMCDakWnwqF1lVg-7/export?format=xlsx&gid=1981545536](https://docs.google.com/spreadsheets/d/1wM0lHYqNTgf4Jo4AMCDakWnwqF1lVg-7/export?format=xlsx&gid=1981545536)"
+        url = "https://docs.google.com/spreadsheets/d/1wM0lHYqNTgf4Jo4AMCDakWnwqF1lVg-7/export?format=xlsx&gid=1981545536"
         df_daily = pd.read_excel(url, engine="openpyxl")
         date_col = 'Tanggal' if 'Tanggal' in df_daily.columns else df_daily.columns[0]
         df_daily[date_col] = pd.to_datetime(df_daily[date_col])
@@ -1519,15 +1519,14 @@ elif main_menu == "🌍 Analisis Sensitivitas":
         for col, (lbl, val, dv, sfx) in zip(cols, apbn_kpis):
             with col: st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}", delta_color=metric_delta_color(dv))
 
-        st.markdown("##### 📊 Posisi Defisit APBN vs Batas 3% PDB")
         limit = 3.0
         col_b, col_s = st.columns(2)
         with col_b:
-            alert_b = "🔴" if abs(b_sim['defpdb']) > limit else "🟢"
+            alert_b = "🔴" if abs(b_sim["defpdb"]) > limit else "🟢"
             st.markdown(f"**Baseline {alert_b}:** `{b_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(b_sim["defpdb"]) / limit, 1.0))
         with col_s:
-            alert_s = "🔴" if abs(s_sim['defpdb']) > limit else "🟢"
+            alert_s = "🔴" if abs(s_sim["defpdb"]) > limit else "🟢"
             st.markdown(f"**Simulasi {alert_s}:** `{s_sim['defpdb']:.2f}% PDB`")
             st.progress(min(abs(s_sim["defpdb"]) / limit, 1.0))
 
@@ -1536,7 +1535,7 @@ elif main_menu == "🌍 Analisis Sensitivitas":
             def_colors = ["rgba(22,163,74,0.7)" if v >= 0 else "rgba(220,38,38,0.7)" for v in R["def"]["s"]]
             fig = go.Figure([
                 bar_trace("Baseline", YL, R["def"]["b"], C["purple"], opacity=0.35),
-                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0)
+                go.Bar(name="Simulasi", x=YL, y=R["def"]["s"], marker_color=def_colors, marker_line_width=0),
             ])
             fig.update_layout(**fig_layout("Defisit APBN (Rp T)", barmode="group"))
             st.plotly_chart(fig, use_container_width=True)
@@ -1563,38 +1562,20 @@ elif main_menu == "🌍 Analisis Sensitivitas":
             fig.update_layout(**fig_layout("Sensitivitas Defisit vs ICP", xaxis_title="ICP (USD/bbl)", yaxis_title="Defisit (Rp T)"))
             st.plotly_chart(fig, use_container_width=True)
 
-        c4, c5 = st.columns(2)
-        with c4:
-            fig = go.Figure([
-                bar_trace("Subsidi Energi Baseline", YL, R["sube"]["b"],  C["red"], opacity=0.35),
-                bar_trace("Subsidi Energi Simulasi", YL, R["sube"]["s"],  C["red2"], opacity=0.85),
-                bar_trace("Bunga Utang Baseline", YL, R["bunga"]["b"], C["orange"], opacity=0.35),
-                bar_trace("Bunga Utang Simulasi", YL, R["bunga"]["s"], C["orange2"], opacity=0.85)
-            ])
-            fig.update_layout(**fig_layout("Komponen Belanja Utama (Rp T)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
-        with c5:
-            fig = go.Figure([
-                bar_trace("Pajak Baseline", YL, R["pajak"]["b"], C["blue"], opacity=0.35),
-                bar_trace("Pajak Simulasi", YL, R["pajak"]["s"], C["teal"], opacity=0.85)
-            ])
-            fig.update_layout(**fig_layout("Komponen Penerimaan Pajak (Rp T)", barmode="group"))
-            st.plotly_chart(fig, use_container_width=True)
-
         ax = s_sim["ax"]
         col_rev, col_bel = st.columns(2)
         with col_rev:
             st.markdown("##### 🔵 Dampak ke Sisi Pendapatan")
             st.dataframe(pd.DataFrame({
                 "Komponen": ["PPh Migas (ICP sensitif)", "PNBP SDA Migas (ICP sensitif)", "Bea Keluar (NT + komoditas)", "Delta Total Pendapatan"],
-                "Delta (Rp T)": [round(ax["pph"],2), round(ax["sda"],2), round(ax["bea"],2), round(ax["rev"],2)],
-            }), hide_index=True, use_container_width=True)
+                "Delta (Rp T)": [round(ax["pph"], 2), round(ax["sda"], 2), round(ax["bea"], 2), round(ax["rev"], 2)],
+            }), hide_index=True, width="stretch")
         with col_bel:
             st.markdown("##### 🔴 Tekanan Sisi Belanja")
             st.dataframe(pd.DataFrame({
                 "Komponen": ["Subsidi Energi (ICP naik + NT melemah)", "Bunga Utang Valas (NT melemah)", "Delta Total Belanja"],
-                "Delta (Rp T)": [round(ax["sube"],2), round(ax["bunga"],2), round(ax["bel"],2)],
-            }), hide_index=True, use_container_width=True)
+                "Delta (Rp T)": [round(ax["sube"], 2), round(ax["bunga"], 2), round(ax["bel"], 2)],
+            }), hide_index=True, width="stretch")
 
     with tab_table:
         st.markdown(f"#### Tabel Lengkap BOP, GDP & APBN — Baseline vs Simulasi (Tahun {yr})")
@@ -1714,7 +1695,7 @@ elif main_menu == "🚢 Intelijen Komoditas & Eksternal":
                         fig_m3_h.update_layout(xaxis=dict(type='category'), margin=dict(l=0,r=0,t=30,b=0))
                         st.plotly_chart(fig_m3_h, use_container_width=True)
             with ml_r:
-                section_title("STRUKTUR KOMODITAS UNGGULAN (TOP 15)")
+                section_title("STRUKTUR KOMODITAS UNGGUHLAN (TOP 15)")
                 fig_k3 = px.bar(kmd_m3.head(15), y="label", x="value", orientation='h')
                 fig_k3.update_yaxes(categoryorder='total ascending', type='category')
                 fig_k3.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=350)
@@ -1811,7 +1792,6 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
     st.markdown("### 🧠 AI Policy Synthesis & Executive Brief")
     st.markdown("Modul ini mensintesis data dari seluruh *dashboard* untuk memproduksi rumusan kebijakan lintas sektoral secara makro dan mikro komprehensif.")
 
-    # Data fallback/default diinisialisasi secara aman, tidak ada peringatan blokir
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     
     mac_view = st.session_state.get('mac_view', '2026')
@@ -1847,9 +1827,7 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                         st.error("Gagal mendeteksi model. Cek API Key.")
                     else:
                         generation_config = genai.types.GenerationConfig(
-                            temperature=0.7, 
-                            top_p=0.9,
-                            max_output_tokens=8192
+                            temperature=0.7, top_p=0.9, max_output_tokens=8192
                         )
                         safety_settings = [
                             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -1897,16 +1875,10 @@ STRUKTUR EXECUTIVE BRIEF:
 * **B. Jangka Menengah & Panjang (Reformasi Struktural):** (Kebijakan struktural untuk memperkuat fundamental ekonomi makro, resiliensi rantai pasok/industrialisasi, ketahanan energi, dan penguatan kemandirian sektor unggulan di tingkat daerah).
 """
                         res = model.generate_content(
-                            prompt, 
-                            generation_config=generation_config,
-                            safety_settings=safety_settings,
-                            stream=True
+                            prompt, generation_config=generation_config, safety_settings=safety_settings, stream=True
                         )
-                        
                         out_text = ""
-                        for chunk in res:
-                            out_text += chunk.text
-                            
+                        for chunk in res: out_text += chunk.text
                         out_text = out_text.strip()
                         if out_text.startswith("```markdown"):
                             out_text = out_text.replace("```markdown", "").replace("```", "").strip()
@@ -1916,15 +1888,11 @@ STRUKTUR EXECUTIVE BRIEF:
                         st.session_state[editor_key] = out_text
                         st.success("Sintesis Selesai secara Penuh!")
                         st.rerun()
-
                 except Exception as e: st.error(f"Error AI: {e}")
 
     if editor_key in st.session_state:
         st.markdown("---")
-        st.session_state[editor_key] = st.text_area(
-            "✍️ Ruang Editor Eksekutif:", value=st.session_state[editor_key], height=500,
-            help="Silakan modifikasi draf ini sebelum diekspor menjadi laporan akhir."
-        )
+        st.session_state[editor_key] = st.text_area("✍️ Ruang Editor Eksekutif:", value=st.session_state[editor_key], height=500)
         with st.expander("🔍 Pratinjau Sintesis Akhir", expanded=True):
             st.markdown(st.session_state[editor_key])
         final_policy_text = st.session_state[editor_key]
@@ -1934,150 +1902,40 @@ STRUKTUR EXECUTIVE BRIEF:
     if final_policy_text:
         st.markdown("<br><hr style='border:1px dashed #ccc;'><br>", unsafe_allow_html=True)
         st.markdown("#### 📑 Export Executive Brief")
-        st.caption("Unduh dalam format HTML yang elegan dan profesional untuk dilaporkan kepada pimpinan. Buka file HTML yang diunduh lalu 'Save as PDF' via fitur Print browser.")
-        
         try:
             import markdown
-            
             html_policy = markdown.markdown(final_policy_text)
-            html_policy = html_policy.replace("<ul>", "<ul class='premium-list'>")
-            html_policy = html_policy.replace("<li>", "<li>")
-            html_policy = html_policy.replace("<strong>", "<strong class='highlight-text'>")
-            
+            html_policy = html_policy.replace("<ul>", "<ul class='premium-list'>").replace("<li>", "<li>").replace("<strong>", "<strong class='highlight-text'>")
             html_template = f"""
             <!DOCTYPE html>
             <html lang="id">
             <head>
                 <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Executive Brief - Kementerian PPN/Bappenas</title>
                 <style>
-                    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-                    
-                    body {{ 
-                        font-family: 'Plus Jakarta Sans', sans-serif; 
-                        background-color: #f1f5f9; 
-                        color: #334155; 
-                        line-height: 1.8; 
-                        margin: 0; 
-                        padding: 40px 20px; 
-                    }}
-                    .document-wrapper {{ 
-                        max-width: 850px; 
-                        margin: 0 auto; 
-                        background: #ffffff; 
-                        border-radius: 12px; 
-                        box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
-                        overflow: hidden; 
-                    }}
-                    .header-banner {{ 
-                        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); 
-                        padding: 40px 50px; 
-                        text-align: center; 
-                        border-bottom: 5px solid #eab308; 
-                    }}
-                    .header-banner h1 {{ 
-                        color: #ffffff; 
-                        font-size: 32px; 
-                        margin: 0 0 10px 0; 
-                        letter-spacing: -0.5px; 
-                    }}
-                    .header-banner p {{ 
-                        color: #cbd5e1; 
-                        font-size: 15px; 
-                        margin: 0; 
-                        font-weight: 600; 
-                        text-transform: uppercase; 
-                        letter-spacing: 2px; 
-                    }}
-                    .content-area {{ 
-                        padding: 50px; 
-                    }}
-                    .content-area h1, .content-area h3 {{
-                        font-size: 24px;
-                        color: #0f172a;
-                        border-bottom: 2px solid #e2e8f0;
-                        padding-bottom: 10px;
-                        margin-top: 0;
-                    }}
-                    .content-area h2 {{ 
-                        color: #1e3a8a; 
-                        font-size: 20px; 
-                        margin-top: 35px; 
-                        display: flex;
-                        align-items: center;
-                        gap: 10px;
-                    }}
-                    .content-area h2::before {{
-                        content: '';
-                        display: block;
-                        width: 6px;
-                        height: 24px;
-                        background-color: #eab308;
-                        border-radius: 4px;
-                    }}
-                    .content-area p {{
-                        font-size: 15px;
-                        text-align: justify;
-                    }}
-                    .premium-list {{ 
-                        padding-left: 20px; 
-                    }}
-                    .premium-list li {{ 
-                        margin-bottom: 12px; 
-                        font-size: 15px; 
-                        padding-left: 5px;
-                    }}
-                    .premium-list li::marker {{
-                        color: #1e3a8a;
-                    }}
-                    .highlight-text {{ 
-                        color: #0f172a; 
-                        font-weight: 700; 
-                        background-color: #fef9c3;
-                        padding: 0 4px;
-                        border-radius: 4px;
-                    }}
-                    .footer-note {{
-                        text-align: center;
-                        padding: 30px;
-                        background-color: #f8fafc;
-                        color: #94a3b8;
-                        font-size: 13px;
-                        border-top: 1px solid #e2e8f0;
-                    }}
-                    @media print {{
-                        body {{ background-color: #ffffff; padding: 0; }}
-                        .document-wrapper {{ box-shadow: none; max-width: 100%; border-radius: 0; }}
-                        .header-banner {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-                        .content-area h2::before {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-                        .highlight-text {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-                    }}
+                    @import url('[https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap)');
+                    body {{ font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; color: #334155; line-height: 1.8; margin: 0; padding: 40px 20px; }}
+                    .document-wrapper {{ max-width: 850px; margin: 0 auto; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); overflow: hidden; }}
+                    .header-banner {{ background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); padding: 40px 50px; text-align: center; border-bottom: 5px solid #eab308; }}
+                    .header-banner h1 {{ color: #ffffff; font-size: 32px; margin: 0 0 10px 0; }}
+                    .header-banner p {{ color: #cbd5e1; font-size: 15px; margin: 0; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; }}
+                    .content-area {{ padding: 50px; }}
+                    .content-area h1, .content-area h3 {{ font-size: 24px; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }}
+                    .content-area h2 {{ color: #1e3a8a; font-size: 20px; margin-top: 35px; display: flex; align-items: center; gap: 10px; }}
+                    .content-area h2::before {{ content: ''; display: block; width: 6px; height: 24px; background-color: #eab308; border-radius: 4px; }}
+                    .premium-list li {{ margin-bottom: 12px; font-size: 15px; }}
+                    .highlight-text {{ color: #0f172a; font-weight: 700; background-color: #fef9c3; padding: 0 4px; border-radius: 4px; }}
+                    .footer-note {{ text-align: center; padding: 30px; background-color: #f8fafc; color: #94a3b8; font-size: 13px; border-top: 1px solid #e2e8f0; }}
                 </style>
             </head>
             <body>
                 <div class="document-wrapper">
-                    <div class="header-banner">
-                        <h1>Executive Brief</h1>
-                        <p>Sintesis Makroekonomi & Kebijakan Lintas Sektoral</p>
-                    </div>
-                    <div class="content-area">
-                        {html_policy}
-                    </div>
-                    <div class="footer-note">
-                        Dihasilkan oleh Macro AI Command Center - Kementerian PPN/Bappenas RI<br>
-                        <em>Dokumen Internal Terbatas</em>
-                    </div>
+                    <div class="header-banner"><h1>Executive Brief</h1><p>Sintesis Makroekonomi & Kebijakan Lintas Sektoral</p></div>
+                    <div class="content-area">{html_policy}</div>
+                    <div class="footer-note">Dihasilkan oleh Macro AI Command Center - Kementerian PPN/Bappenas RI<br><em>Dokumen Internal Terbatas</em></div>
                 </div>
             </body>
             </html>
             """
-            st.download_button(
-                label="📥 Unduh Executive Summary (Format HTML Elegan)", 
-                data=html_template, 
-                file_name="Executive_Brief_Bappenas.html", 
-                mime="text/html", 
-                type="primary"
-            )
-        except Exception as e:
-            st.warning(f"Gagal menyiapkan dokumen HTML. Error detail: {e}")
+            st.download_button(label="📥 Unduh Executive Summary (Format HTML Elegan)", data=html_template, file_name="Executive_Brief_Bappenas.html", mime="text/html", type="primary")
+        except Exception as e: st.warning(f"Gagal menyiapkan dokumen HTML: {e}")
