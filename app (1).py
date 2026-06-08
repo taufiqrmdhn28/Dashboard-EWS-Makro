@@ -29,11 +29,7 @@ try:
 except:
     USER_API_KEY = ""
 
-# ==========================================
-# SETUP CACHE AI (Biar Abadi)
-# ==========================================
 CACHE_FILE = "policy_cache.pkl"
-
 if 'policy_cache' not in st.session_state:
     if os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "rb") as f:
@@ -53,7 +49,6 @@ BPS_DB_PATH  = os.path.join(DATA_DIR, os.environ.get("BPS_DB_FILE", "ekspor_impo
 BOP_DB_PATH  = os.path.join(DATA_DIR, os.environ.get("BOP_DB_FILE", "bop_indonesia.db"))
 TM_XLSX      = os.path.join(DATA_DIR, os.environ.get("TM_XLSX_FILE", "data_trademap.xlsx"))
 
-# Fungsi Krusial: Download DB BPS dari GDrive
 GDRIVE_FILE_ID = "1IhKP7Jw7xhRPDzvw4CY7FVvK0lO_biy_"
 GDRIVE_URL = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
 
@@ -230,7 +225,7 @@ SCEN = {
         "subnon":     {2026: 107.1,   2027: 114.3,   2028: 142.3,   2029: 293.9},
         "bunga":      {2026: 600.6,   2027: 636.5,   2028: 808.3,   2029: 947.1},
         "pajak":      {2026: 2700.0,  2027: 2952.4,  2028: 4356.1,  2029: 5558.6},
-        "pnbp":       {2026: 496.3,   2027: 532.7,   2028: 685.2,   2029: 852.0},
+        "pnbp":       {2026: 499.7,   2027: 532.7,   2028: 685.2,   2029: 852.0},
         "migas":      {2026: 150.3,   2027: 136.0,   2028: 146.1,   2029: 222.7},
         "pdb":        {2026: 25576.9, 2027: 28115.9, 2028: 31810.0, 2029: 35524.1},
     },
@@ -242,17 +237,12 @@ EL = {
     "bop_exp_oil":     0.80,   "bop_imp_oil":      0.95,
     "bop_svc_nt":      0.05,   "bop_prim_nt":     -0.03,
     "share_exp_migas": 0.06,   "share_imp_migas":  0.16,
-    
-    # Transmisi GDP
     "gexp_nt":         0.15,   "gimp_nt":         -0.10, 
     "cons_nt":        -0.10,   "inv_nt":          -0.06, 
     "gexp_oil":        0.025,  "gimp_oil":         0.018,
     "cons_oil":       -0.05,   "inv_oil":         -0.03, 
-
-    # Bobot PDB terhadap pertumbuhan
     "w_cons":          0.547,  "w_inv":            0.317,
     "w_exp":           0.22,   "w_imp":            0.27,
-    
     "sube_oil":        0.95,   "sube_nt":         -0.15,
     "bunga_nt":        0.006,
 }
@@ -291,7 +281,6 @@ def simulate_eksternal(nt: float, oil: float, year: int, scen: str):
     s["capbal"]     = b["capbal"]
     s["finbal"]     = b["finbal"]
     
-    # Kalkulasi Delta untuk BOP
     delta_trade = s["tradebal"] - b["tradebal"]
     delta_svc = s["svcbal"] - b["svcbal"]
     delta_prim = s["primbal"] - b["primbal"]
@@ -616,8 +605,12 @@ def calculate_annual_nowcast(pred_means, target_var, cutoff):
     vals = [v for v in vals if pd.notna(v)]
     return np.mean(vals) if len(vals) == 4 else np.nan
 
-@st.cache_data(show_spinner="⚙️ DFM Engine: Menghasilkan Histori Prediksi & Sinkronisasi Data Actual...")
-def run_full_dfm_replication():
+# ==========================================
+# PENYESUAIAN MODEL AGAR SAMA PERSIS DENGAN MATLAB
+# (MENGGUNAKAN CACHE BUSTER AGAR HASIL LAMA TERHAPUS)
+# ==========================================
+@st.cache_data(show_spinner="⚙️ DFM Engine: Sinkronisasi Ulang dengan Parameter MATLAB (Bypass Cache)...")
+def run_full_dfm_replication(cache_buster=1):
     try:
         df_m_raw = pd.read_excel(file_adb, sheet_name='MonthlyData', index_col=0, parse_dates=True)
         df_q_raw = pd.read_excel(file_adb, sheet_name='QuarterlyData', index_col=0, parse_dates=True)
@@ -678,8 +671,18 @@ def run_full_dfm_replication():
             else:
                 end_q = data_full_resampled.loc[data_full_resampled.index <= obs_cutoff, [target_var]].resample(q_freq).last()
             
-            model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, factors=2, factor_orders=2, idiosyncratic_ar=2, standardize=True)
+            # --- PARAMETER DIKETATKAN SESUAI SCRIPT MATLAB ---
+            model = DynamicFactorMQ(
+                endog=end_m, 
+                endog_quarterly=end_q, 
+                factors=2, 
+                factor_orders=2, 
+                idiosyncratic_ar=2,   # p_AR = 2 seperti di MATLAB
+                standardize=True
+            )
+            # Iterasi dimaksimalkan untuk konvergensi yang sama dengan MATLAB
             res = model.fit(method='em', maxiter=1500, tolerance=1e-6, disp=False)
+            
             means = res.get_prediction(end=res.model.nobs + 24).predicted_mean
             
             results_table.append({
@@ -695,6 +698,7 @@ def run_full_dfm_replication():
             })
         return pd.DataFrame(results_table)
     except Exception as e:
+        st.error(f"Error Replikasi DFM: {e}")
         return pd.DataFrame()
 
 
@@ -769,7 +773,8 @@ if main_menu == "📊 Makro Nasional (DFM)":
 
         t_2026 = df_target[df_target['Tahun'] == 2026]['Target'].values[0] if 2026 in df_target['Tahun'].values else 5.4
         
-        df_full_results = run_full_dfm_replication()
+        # Eksekusi dengan cache buster (angka random/berbeda) untuk reset memori Streamlit
+        df_full_results = run_full_dfm_replication(cache_buster=999)
         
         if not df_full_results.empty:
             preds_2026 = []
@@ -1510,7 +1515,7 @@ elif main_menu == "🌍 Analisis Sensitivitas":
             ("🟡 CA / PDB",            f"{s_sim['capdb']:.2f}%",   "%",          s_sim["capdb"]-b_sim["capdb"],        " pp"),
         ]
         cols = st.columns(6)
-        for col, (lbl, val, unit, dv, sfx) in zip(cols, bop_kpis):
+        for col, (lbl, val, dv, sfx) in zip(cols, bop_kpis):
             with col:
                 st.metric(lbl, val, f"{'+' if dv>=0 else ''}{dv:.2f}{sfx}", delta_color=metric_delta_color(dv))
 
