@@ -678,8 +678,8 @@ def run_full_dfm_replication():
             else:
                 end_q = data_full_resampled.loc[data_full_resampled.index <= obs_cutoff, [target_var]].resample(q_freq).last()
             
-            model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, factors=2, factor_orders=2, idiosyncratic_ar=1, standardize=True)
-            res = model.fit(method='em', maxiter=500, tolerance=1e-5, disp=False)
+            model = DynamicFactorMQ(endog=end_m, endog_quarterly=end_q, factors=2, factor_orders=2, idiosyncratic_ar=2, standardize=True)
+            res = model.fit(method='em', maxiter=1500, tolerance=1e-6, disp=False)
             means = res.get_prediction(end=res.model.nobs + 24).predicted_mean
             
             results_table.append({
