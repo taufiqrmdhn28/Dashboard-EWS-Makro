@@ -1298,24 +1298,27 @@ elif main_menu == "🚢 Intelijen Komoditas & Eksternal":
             with ml_l:
                 section_title("ANALISIS TREN HISTORIS")
                 h_c1, h_c2, h_c3, h_c4 = st.columns([2,2,2,2])
-                hs_h = h_c1.selectbox("HS Code", options=HS_ALL, index=26, key="m3_hs_sel")
-                neg_h = h_c2.selectbox("Mitra", options=["Semua Negara"] + PARTNER_LIST, key="m3_neg_sel")
-                met_h = h_c3.radio("Metrik", ["Nilai", "YoY %"], horizontal=True, key="m3_met_sel")
-                btn_h = h_c4.button("Tampilkan", use_container_width=True, key="m3_btn_hist")
+                hs_h = h_c1.selectbox("HS Code", options=HS_ALL, index=26, key="m3_hs_sel", label_visibility="collapsed")
+                neg_h = h_c2.selectbox("Mitra", options=["Semua Negara"] + PARTNER_LIST, key="m3_neg_sel", label_visibility="collapsed")
+                met_h = h_c3.radio("Metrik", ["Nilai", "YoY %"], horizontal=True, key="m3_met_sel", label_visibility="collapsed")
+                btn_h = h_c4.button("Tampilkan Histori", use_container_width=True, key="m3_btn_hist")
                 
                 if btn_h:
-                    df_h_raw = fetch_hist_bps_db(m3_meta['sumber_kode'], hs_h, m3_meta['tipe'], m3_meta['bulan'])
-                    if not df_h_raw.empty:
-                        if neg_h != "Semua Negara": df_h_raw = df_h_raw[df_h_raw["negara"] == normalize_negara(neg_h)]
-                        df_h_g = df_h_raw.groupby("tahun", as_index=False)["value"].sum().sort_values("tahun")
-                        df_h_g["Tahun"], df_h_g["Value"] = df_h_g["tahun"].astype(str), df_h_g["value"] / div_m3
-                        if met_h == "YoY %":
-                            df_h_g["Value"] = df_h_g["Value"].pct_change() * 100
-                            fig_m3_h = px.line(df_h_g, x="Tahun", y="Value", markers=True, title=f"YoY (%) - HS {hs_h}")
+                    with st.spinner("Menarik data historis..."):
+                        df_h_raw = fetch_hist_bps_db(m3_meta['sumber_kode'], hs_h, m3_meta['tipe'], m3_meta['bulan'])
+                        if df_h_raw.empty:
+                            st.warning("Tidak ada data historis.")
                         else:
-                            fig_m3_h = px.line(df_h_g, x="Tahun", y="Value", markers=True, title=f"Tren Nilai ({m3_meta['unit']}) - HS {hs_h}")
-                        fig_m3_h.update_layout(xaxis=dict(type='category'), margin=dict(l=0,r=0,t=30,b=0))
-                        st.plotly_chart(fig_m3_h, use_container_width=True)
+                            if neg_h != "Semua Negara": df_h_raw = df_h_raw[df_h_raw["negara"] == normalize_negara(neg_h)]
+                            df_h_g = df_h_raw.groupby("tahun", as_index=False)["value"].sum().sort_values("tahun")
+                            df_h_g["Tahun"], df_h_g["Value"] = df_h_g["tahun"].astype(str), df_h_g["value"] / div_m3
+                            if met_h == "YoY %":
+                                df_h_g["Value"] = df_h_g["Value"].pct_change() * 100
+                                fig_m3_h = px.line(df_h_g, x="Tahun", y="Value", markers=True, title=f"YoY (%) - HS {hs_h}")
+                            else:
+                                fig_m3_h = px.line(df_h_g, x="Tahun", y="Value", markers=True, title=f"Tren Nilai ({m3_meta['unit']}) - HS {hs_h}")
+                            fig_m3_h.update_layout(xaxis=dict(type='category'), margin=dict(l=0,r=0,t=30,b=0))
+                            st.plotly_chart(fig_m3_h, use_container_width=True)
             with ml_r:
                 section_title("STRUKTUR KOMODITAS UNGGULAN (TOP 15)")
                 fig_k3 = px.bar(kmd_m3.head(15), y="label", x="value", orientation='h')
@@ -1323,6 +1326,24 @@ elif main_menu == "🚢 Intelijen Komoditas & Eksternal":
                 fig_k3.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=350)
                 fig_k3.update_traces(marker_color=c_g)
                 st.plotly_chart(fig_k3, use_container_width=True)
+
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+            
+            # Row 3: Top Negara & Share Pie
+            r2_left, r2_right = st.columns(2)
+            with r2_left:
+                section_title("TOP NEGARA MITRA")
+                fig_neg = px.bar(neg_m3.head(15), y="negara", x="value", orientation='h')
+                fig_neg.update_yaxes(categoryorder='total ascending', type='category')
+                fig_neg.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=350)
+                fig_neg.update_traces(marker_color="#58a6ff")
+                st.plotly_chart(fig_neg, use_container_width=True)
+                
+            with r2_right:
+                section_title("SHARE KOMODITAS (TOP 8)")
+                fig_pie = px.pie(kmd_m3.head(8), values='value', names='label', hole=0.45)
+                fig_pie.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=350, legend=dict(orientation="v"))
+                st.plotly_chart(fig_pie, use_container_width=True)
 
     with sub_tab2:
         if not df_m3.empty:
@@ -1382,7 +1403,8 @@ elif main_menu == "🚢 Intelijen Komoditas & Eksternal":
                 s_y2 = cx2.number_input("Tahun Akhir", min_value=2004, max_value=2025, value=2024, key="m3_bop_y2")
                 s_frq = cx3.selectbox("Frekuensi", ["Kuartalan", "Tahunan"], key="m3_bop_frq")
                 s_uni = cx4.selectbox("Satuan", ["Juta USD", "Miliar USD"], key="m3_bop_uni")
-                btn_s = cx5.form_submit_button("TAMPILKAN BOP", use_container_width=True)
+                cx5.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                btn_s = cx5.form_submit_button("▶ TAMPILKAN NERACA", use_container_width=True)
                 
             if btn_s:
                 f_val = "quarterly" if s_frq == "Kuartalan" else "annual"
@@ -1392,7 +1414,99 @@ elif main_menu == "🚢 Intelijen Komoditas & Eksternal":
                 
                 if not df_seki.empty:
                     df_seki["nilai"] = df_seki["value_mn_usd"] / div_s
-                    st.dataframe(df_seki[["year", "period", "keterangan", "items_en", "nilai"]], use_container_width=True, hide_index=True)
+                    
+                    # Row 1: KPI Cards
+                    ck1, ck2, ck3 = st.columns(3)
+                    ca_v, cad_v, ner_v, _BOP_LATEST = bop_latest_val(1), bop_latest_val(54), bop_latest_val(48), bop_latest()
+                    with ck1: kpi_card("TRANSAKSI BERJALAN", f"{(ca_v/div_s if ca_v else 0):,.1f} {s_uni}", "#3fb950" if (ca_v or 0) >= 0 else "#f78166", f"Periode: {_BOP_LATEST}")
+                    with ck2: kpi_card("CADANGAN DEVISA", f"{(cad_v/div_s if cad_v else 0):,.1f} {s_uni}", "#58a6ff", f"Periode: {_BOP_LATEST}")
+                    with ck3: kpi_card("NERACA KESELURUHAN", f"{(ner_v/div_s if ner_v else 0):,.1f} {s_uni}", "#bc8cff", f"Periode: {_BOP_LATEST}")
+
+                    def gs(iid):
+                        s = df_seki[df_seki["item_id"] == iid].copy()
+                        s = s.sort_values("year" if f_val == "annual" else ["year","quarter"])
+                        s["v"] = s["nilai"]
+                        return s
+                    xcol = "period" if f_val == "quarterly" else "year"
+
+                    st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+
+                    # Row 2: CA Trends & Waterfall
+                    cc1, cc2 = st.columns([3, 2])
+                    with cc1:
+                        section_title("TREN TRANSAKSI BERJALAN & KOMPONEN")
+                        ca_df = df_seki[df_seki['item_id'].isin([2, 17, 20, 23, 1])] 
+                        fig_ca = px.bar(ca_df[ca_df['item_id']!=1], x=xcol, y="nilai", color="keterangan", barmode="relative")
+                        fig_ca.add_scatter(x=ca_df[ca_df['item_id']==1][xcol], y=ca_df[ca_df['item_id']==1]["nilai"], name="Total CA", line=dict(color="#000000", width=2))
+                        fig_ca.update_layout(height=320, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", y=1.1, title=""), xaxis=dict(type='category'))
+                        st.plotly_chart(fig_ca, use_container_width=True)
+                    with cc2:
+                        section_title("DEKOMPOSISI NERACA (TOTAL PERIODE)")
+                        wf_ids = [1, 26, 29, 47, 48]
+                        wf_lbl = ["Transaksi<br>Berjalan","Transaksi<br>Modal","Transaksi<br>Finansial","Selisih<br>Perhitungan","Neraca<br>Keseluruhan"]
+                        wf_v = [float(gs(iid)["v"].sum()) if not gs(iid).empty else 0 for iid in wf_ids]
+                        fig_wf = go.Figure(go.Waterfall(x=wf_lbl, measure=["relative","relative","relative","relative","total"], y=wf_v, textposition="outside", decreasing=dict(marker_color="#f78166"), increasing=dict(marker_color="#3fb950"), totals=dict(marker_color="#bc8cff")))
+                        fig_wf.update_layout(height=320, margin=dict(l=0, r=0, t=30, b=0), showlegend=False)
+                        st.plotly_chart(fig_wf, use_container_width=True)
+
+                    # Row 3: Financial & Reserves
+                    cd1, cd2 = st.columns(2)
+                    with cd1:
+                        section_title("TRANSAKSI FINANSIAL: KOMPONEN INVESTASI")
+                        fig_inv = go.Figure()
+                        for iid, lbl_i, c in [(32,"FDI","#3fb950"),(35,"Portofolio","#58a6ff"),(41,"Lainnya","#ffa657"),(40,"Derivatif","#e3b341")]:
+                            s = gs(iid)
+                            if not s.empty: fig_inv.add_trace(go.Bar(x=s[xcol], y=s["v"], name=lbl_i, marker_color=c))
+                        s_fin = gs(29)
+                        if not s_fin.empty: fig_inv.add_trace(go.Scatter(x=s_fin[xcol], y=s_fin["v"], name="Total Fin.", line=dict(color="#bc8cff", width=2, dash="dot")))
+                        fig_inv.update_layout(barmode="relative", height=320, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", y=1.1), xaxis=dict(type='category'))
+                        st.plotly_chart(fig_inv, use_container_width=True)
+                    with cd2:
+                        section_title("CADANGAN DEVISA")
+                        cad_df = df_seki[df_seki['item_id'] == 54]
+                        fig_cad = px.area(cad_df, x=xcol, y="nilai")
+                        fig_cad.update_traces(line_color="#39d0d8", fillcolor="rgba(57,208,216,0.1)")
+                        fig_cad.update_layout(height=320, margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(type='category'))
+                        st.plotly_chart(fig_cad, use_container_width=True)
+
+                    # Row 4: Custom Compare & CA%
+                    ce1, ce2 = st.columns(2)
+                    with ce1:
+                        section_title("KOMPARASI INDIKATOR")
+                        seki_cmp = st.multiselect("Pilih Indikator:", options=list(BOP_MAIN_ITEMS.values()), default=["Transaksi Finansial", "Neraca Keseluruhan"], label_visibility="collapsed", key="bop_cmp")
+                        inv_map = {v: k for k, v in BOP_MAIN_ITEMS.items()}
+                        fig_cmp = go.Figure()
+                        pal = ["#58a6ff", "#3fb950", "#f78166", "#e3b341", "#bc8cff"]
+                        for i, ind in enumerate(seki_cmp):
+                            s = gs(inv_map[ind])
+                            if not s.empty: fig_cmp.add_trace(go.Scatter(x=s[xcol], y=s["v"], name=ind, mode="lines+markers", line=dict(color=pal[i%len(pal)], width=2)))
+                        fig_cmp.update_layout(height=320, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", y=1.1), xaxis=dict(type='category'))
+                        st.plotly_chart(fig_cmp, use_container_width=True)
+                    with ce2:
+                        section_title("CURRENT ACCOUNT % PDB")
+                        s_pct = df_seki[df_seki["item_id"] == 56].copy().sort_values("year" if f_val == "annual" else ["year","quarter"])
+                        fig_pct = go.Figure()
+                        if not s_pct.empty:
+                            fig_pct.add_trace(go.Bar(x=s_pct[xcol], y=s_pct["value_mn_usd"], marker_color=["#3fb950" if v >= 0 else "#f78166" for v in s_pct["value_mn_usd"]]))
+                        fig_pct.update_layout(height=320, margin=dict(l=0, r=0, t=30, b=0), xaxis=dict(type='category'))
+                        st.plotly_chart(fig_pct, use_container_width=True)
+
+                    st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+                    section_title("DATA LENGKAP NERACA PEMBAYARAN")
+                    
+                    seki_tbl_filter = st.multiselect("Filter Indikator:", options=list(BOP_MAIN_ITEMS.values()), default=None, label_visibility="collapsed", key="bop_tbl_flt")
+                    df_seki_table = df_seki.copy()
+                    if seki_tbl_filter:
+                        df_seki_table = df_seki_table[df_seki_table["keterangan"].isin(seki_tbl_filter)]
+                    
+                    col_dl, col_spc = st.columns([1, 4])
+                    with col_dl:
+                        csv_seki = df_seki_table[["year", "period", "keterangan", "items_en", "nilai"]].to_csv(index=False).encode('utf-8')
+                        st.download_button("⬇ Download CSV", data=csv_seki, file_name=f"SEKI_{s_y1}_{s_y2}.csv", mime='text/csv', use_container_width=True)
+                    
+                    st.dataframe(df_seki_table[["year", "period", "keterangan", "items_en", "nilai"]], use_container_width=True, hide_index=True)
+                else:
+                    st.warning("Tidak ada data SEKI untuk rentang waktu tersebut.")
 
 # =========================================================================
 # MODUL 3: EKONOMI DAERAH (WIP)
