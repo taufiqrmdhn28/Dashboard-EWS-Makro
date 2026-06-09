@@ -1516,11 +1516,18 @@ elif main_menu == "📍 Ekonomi Daerah":
     # FUNGSI LOKAL DAERAH (Tanpa st.cache_data agar aman ditaruh di dalam struktur if/elif)
     # ==============================================================================
     def smart_load_daerah(filename_base):
+        import os
+        # Deteksi otomatis lokasi folder app.py saat ini berjalan secara absolut
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        
         formats = ['.xlsx', '.csv'] 
-        folders = ['', 'data/']
+        # Mencari langsung ke lokasi persis app.py dan folder 'data' di dalamnya
+        folders = [base_dir, os.path.join(base_dir, 'data')]
+        
         for fldr in folders:
             for fmt in formats:
-                path = f"{fldr}{filename_base}{fmt}"
+                # Membuat jalur file absolut (misal: /mount/src/ekonomi-daerah/data_ekonomi.xlsx)
+                path = os.path.join(fldr, f"{filename_base}{fmt}")
                 if os.path.exists(path):
                     try:
                         if fmt == '.xlsx':
@@ -1532,11 +1539,16 @@ elif main_menu == "📍 Ekonomi Daerah":
                                     df = pd.read_csv(path, sep=",", encoding='cp1252', engine='python')
                             except:
                                 df = pd.read_csv(path, sep=",", encoding='cp1252', engine='python')
+                        
+                        # Bersihkan nama kolom
                         df.columns = df.columns.astype(str).str.strip().str.lower()
                         return df
-                    except Exception:
+                    except Exception as e:
+                        # Jika file ketemu tapi corrupt/gagal baca, munculkan errornya
+                        st.error(f"File {filename_base}{fmt} ditemukan, tapi gagal dibaca: {e}")
                         continue
-        return pd.DataFrame()
+                        
+        return pd.DataFrame() # Jika benar-benar tidak ada di server
 
     def load_data_aman_daerah(provinsi, tahun):
         df_all = smart_load_daerah("data_ekonomi")
