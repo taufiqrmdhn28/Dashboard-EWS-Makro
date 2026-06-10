@@ -1517,7 +1517,7 @@ elif main_menu == "📍 Ekonomi Daerah":
     # ==============================================================================
     def smart_load_daerah(filename_base):
         formats = ['.xlsx', '.csv'] 
-        folders = ['', 'data/']
+        folders = ['', 'Data/']
         for fldr in folders:
             for fmt in formats:
                 path = f"{fldr}{filename_base}{fmt}"
