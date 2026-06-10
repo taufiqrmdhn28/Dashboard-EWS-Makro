@@ -1244,7 +1244,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
         st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================================================================
-# MODUL 2: INTELIJEN KOMODITAS & EKSTERNAL
+# MODUL 2: ANALISIS KOMODITAS & EKSTERNAL
 # =========================================================================
 elif main_menu == "🚢 Intelijen Komoditas & Eksternal":
     with st.sidebar:
