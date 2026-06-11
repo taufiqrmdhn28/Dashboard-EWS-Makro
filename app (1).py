@@ -1511,16 +1511,20 @@ elif main_menu == "🚢 Analisis Komoditas & Eksternal":
 # =========================================================================
 # MODUL 3: EKONOMI DAERAH (WIP)
 # =========================================================================
-elif main_menu == "📍 Ekonomi Daerah":
+elif "Ekonomi Daerah" in main_menu:
+
     # ==============================================================================
-    # FUNGSI LOKAL DAERAH (Tanpa st.cache_data agar aman ditaruh di dalam struktur if/elif)
+    # FUNGSI LOKAL DAERAH
     # ==============================================================================
     def smart_load_daerah(filename_base):
+        import os
+        base_dir = os.path.dirname(os.path.abspath(__file__))
         formats = ['.xlsx', '.csv'] 
-        folders = ['', 'Data/']
+        folders = [base_dir, os.path.join(base_dir, 'data')]
+        
         for fldr in folders:
             for fmt in formats:
-                path = f"{fldr}{filename_base}{fmt}"
+                path = os.path.join(fldr, f"{filename_base}{fmt}")
                 if os.path.exists(path):
                     try:
                         if fmt == '.xlsx':
@@ -1532,6 +1536,7 @@ elif main_menu == "📍 Ekonomi Daerah":
                                     df = pd.read_csv(path, sep=",", encoding='cp1252', engine='python')
                             except:
                                 df = pd.read_csv(path, sep=",", encoding='cp1252', engine='python')
+                        
                         df.columns = df.columns.astype(str).str.strip().str.lower()
                         return df
                     except Exception:
@@ -1588,41 +1593,104 @@ elif main_menu == "📍 Ekonomi Daerah":
     def get_warna_sektor_map(df_column):
         return {sektor: WARNA_SEKTOR_GLOBAL.get(str(sektor).lower(), "#6B7280") for sektor in df_column.unique()}
 
-    def buat_bar_chart_makro(df_aktif, tipe_chart):
+    def buat_bar_chart_makro(df_aktif, tipe_chart, provinsi_aktif=None):
         if df_aktif is None or df_aktif.empty:
             st.warning("Data makro untuk grafik batang kosong.")
             return
+
         if tipe_chart == "Pertumbuhan Ekonomi":
             if "lpe_ctc" not in df_aktif.columns: return st.warning("Kolom lpe_ctc tidak ditemukan.")
-            df_sorted = df_aktif.dropna(subset=["lpe_ctc"]).sort_values(by="lpe_ctc", ascending=True)
-            fig = px.bar(df_sorted, x="lpe_ctc", y="provinsi", orientation='h', labels={"lpe_ctc": "LPE c-to-c (%)", "provinsi": "Provinsi"}, color="lpe_ctc", color_continuous_scale="Viridis")
-            fig.update_traces(texttemplate='%{x:.1f}', textposition='outside')
+            kolom_nilai = "lpe_ctc"
+            label_x = "LPE c-to-c (%)"
+            skala_warna = "Viridis"
         else:
             if "kontribusi" not in df_aktif.columns: return st.warning("Kolom kontribusi tidak ditemukan.")
-            df_sorted = df_aktif.dropna(subset=["kontribusi"]).sort_values(by="kontribusi", ascending=True)
-            fig = px.bar(df_sorted, x="kontribusi", y="provinsi", orientation='h', labels={"kontribusi": "Kontribusi PDRB (%)", "provinsi": "Provinsi"}, color="kontribusi", color_continuous_scale="Cividis")
+            kolom_nilai = "kontribusi"
+            label_x = "Kontribusi PDRB (%)"
+            skala_warna = "Cividis"
+
+        df_sorted = df_aktif.dropna(subset=[kolom_nilai]).sort_values(by=kolom_nilai, ascending=True).copy()
+        
+        df_sorted['label_provinsi'] = df_sorted['provinsi'].apply(
+            lambda x: f"<b>📍 {x}</b>" if str(x).strip().lower() == str(provinsi_aktif).strip().lower() else x
+        )
+        
+        warna_kustom = []
+        for idx, row in df_sorted.iterrows():
+            if str(row['provinsi']).strip().lower() == str(provinsi_aktif).strip().lower():
+                warna_kustom.append("#EF4444") 
+            else:
+                warna_kustom.append(row[kolom_nilai])
+
+        ada_terpilih = df_sorted['provinsi'].str.strip().str.lower().eq(str(provinsi_aktif).strip().lower()).any()
+
+        if ada_terpilih:
+            fig = go.Figure(go.Bar(
+                x=df_sorted[kolom_nilai],
+                y=df_sorted['label_provinsi'],
+                orientation='h',
+                marker=dict(
+                    color=warna_kustom, colorscale=skala_warna, showscale=True,
+                    colorbar=dict(title=label_x, thickness=15, len=0.4, yanchor="middle", y=0.5, outlinewidth=0, ticks=""),
+                    line=dict(width=0, color='rgba(0,0,0,0)')
+                ),
+                text=df_sorted[kolom_nilai], texttemplate='%{text:.1f}', textposition='outside'
+            ))
+            fig.update_layout(xaxis_title=label_x, yaxis_title="Provinsi")
+        else:
+            fig = px.bar(df_sorted, x=kolom_nilai, y="label_provinsi", orientation='h', labels={kolom_nilai: label_x, "label_provinsi": "Provinsi"}, color=kolom_nilai, color_continuous_scale=skala_warna)
             fig.update_traces(texttemplate='%{x:.1f}', textposition='outside')
-        fig.update_layout(height=750, margin={"r":40,"t":10,"l":10,"b":10})
+            
+        fig.update_layout(height=750, margin={"r":40,"t":10,"l":10,"b":10}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
 
-    def buat_peta_klasifikasi(df_aktif):
+    def buat_peta_klasifikasi(df_aktif, provinsi_aktif=None):
         if df_aktif is None or df_aktif.empty or "klasifikasi" not in df_aktif.columns:
             st.warning("Data kosong atau kolom klasifikasi tidak ditemukan, peta tidak dapat dimuat.")
             return
+            
         try:
-            geojson_path = "data/indonesia_provinces.geojson" if os.path.exists("data/indonesia_provinces.geojson") else "indonesia_provinces.geojson"
+            import os
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            geojson_path1 = os.path.join(base_dir, "indonesia_provinces.geojson")
+            geojson_path2 = os.path.join(base_dir, "data", "indonesia_provinces.geojson")
+            
+            geojson_path = geojson_path1 if os.path.exists(geojson_path1) else geojson_path2
+            
             if not os.path.exists(geojson_path):
                 st.info("🗺️ *[File GeoJSON batas wilayah tidak ditemukan]*")
                 return
+                
             with open(geojson_path, "r") as f:
                 geojson_indonesia = json.load(f)
+                
             df_peta = df_aktif.copy()
             df_peta['provinsi'] = df_peta['provinsi'].replace({"DI Yogyakarta": "Daerah Istimewa Yogyakarta", "D.I. Yogyakarta": "Daerah Istimewa Yogyakarta"})
+                
             fig = px.choropleth_mapbox(
                 df_peta, geojson=geojson_indonesia, locations="provinsi", featureidkey="properties.PROVINSI", color="klasifikasi",                 
                 color_discrete_map={"Daerah Maju dan Cepat Tumbuh": "#031926", "Daerah Berkembang Cepat": "#468189", "Daerah Maju tapi Tertekan": "#9DBEBB", "Daerah Relatif Tertinggal": "#F4E9CD"},
-                mapbox_style="carto-positron", center={"lat": -2.5, "lon": 118.0}, zoom=3.5, opacity=0.8, labels={"klasifikasi": "Status Klasifikasi"}
+                mapbox_style="carto-positron", center={"lat": -2.5, "lon": 118.0}, zoom=3.5, opacity=0.8, labels={"klasifikasi": "<b>Status Klasifikasi</b>"}
             )
+            
+            if provinsi_aktif:
+                nama_cari = "Daerah Istimewa Yogyakarta" if provinsi_aktif in ["DI Yogyakarta", "D.I. Yogyakarta"] else provinsi_aktif
+                lat_center, lon_center = None, None
+                for feature in geojson_indonesia['features']:
+                    if feature['properties']['PROVINSI'].strip().lower() == nama_cari.strip().lower():
+                        coords = feature['geometry']['coordinates']
+                        if feature['geometry']['type'] == 'MultiPolygon': sample_point = coords[0][0][0]
+                        else: sample_point = coords[0][0]
+                        lon_center, lat_center = sample_point[0], sample_point[1]
+                        break
+                
+                if lat_center is not None and lon_center is not None:
+                    fig.add_trace(go.Scattermapbox(
+                        lat=[lat_center], lon=[lon_center], mode='markers+text',
+                        marker=dict(size=35, color='rgba(0,0,0,0)'), text=["📍"], textposition="top center",
+                        textfont=dict(size=24), showlegend=False, hoverinfo='none'
+                    ))
+            
             fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, height=450)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
@@ -1638,18 +1706,28 @@ elif main_menu == "📍 Ekonomi Daerah":
                 st.warning(f"Data tren historis untuk {provinsi} tidak ditemukan.")
                 return
             df_prov['lpe_ctc'] = pd.to_numeric(df_prov['lpe_ctc'].astype(str).str.replace(',', '.', regex=False).str.strip().replace('-', np.nan), errors='coerce')
-            if 'lpe_nasional' in df_prov.columns:
-                df_prov['lpe_nasional'] = pd.to_numeric(df_prov['lpe_nasional'].astype(str).str.replace(',', '.', regex=False).str.strip().replace('-', np.nan), errors='coerce')
             
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df_prov['tahun'], y=df_prov['lpe_ctc'], name=f"{provinsi} (c-to-c)", mode='lines+markers', line=dict(width=3, color='#1D4ED8')))
-            if 'lpe_nasional' in df_prov.columns:
-                fig.add_trace(go.Scatter(x=df_prov['tahun'], y=df_prov['lpe_nasional'], name='Nasional', mode='lines+markers', line=dict(dash='dash', color='#DC2626')))
+            fig.add_trace(go.Scatter(
+                x=df_prov['tahun'], y=df_prov['lpe_ctc'], name=f"{provinsi}", mode='lines+markers+text',
+                text=df_prov['lpe_ctc'].round(1), textposition='top center', textfont=dict(color='#1E3A8A', size=10),
+                texttemplate='<span style="background-color: #E0F2FE; padding: 2px 4px; border-radius: 3px;">%{text:.1f}</span>',
+                line=dict(width=3, color='#1D4ED8', shape='spline'), marker=dict(size=8)
+            ))
             
-            fig.update_layout(xaxis=dict(dtick=1, type='category'), xaxis_title="Tahun", yaxis_title="Persentase (%)", margin={"r":10,"t":30,"l":10,"b":10}, legend_orientation="h")
+            if 'lpe_nasional' in df_prov.columns:
+                df_prov['lpe_nasional'] = pd.to_numeric(df_prov['lpe_nasional'].astype(str).str.replace(',', '.', regex=False).str.strip().replace('-', np.nan), errors='coerce')
+                fig.add_trace(go.Scatter(
+                    x=df_prov['tahun'], y=df_prov['lpe_nasional'], name='Nasional          Catatan: Data tahun 2026 bersifat sementara (c-to-c)', 
+                    mode='lines+markers+text', text=df_prov['lpe_nasional'].round(1), textposition='top center',
+                    textfont=dict(color='#7F1D1D', size=10), texttemplate='<span style="background-color: #FFE4E6; padding: 2px 4px; border-radius: 3px;">%{text:.1f}</span>',
+                    line=dict(dash='dash', width=2.5, color='#DC2626', shape='spline'), marker=dict(size=8)
+                ))
+            
+            fig.update_layout(xaxis=dict(dtick=1, type='category'), yaxis=dict(tickformat='.1f'), xaxis_title="Tahun", yaxis_title="Pertumbuhan Ekonomi (%)", margin={"r":10,"t":30,"l":10,"b":10}, legend_orientation="h")
             st.plotly_chart(fig, use_container_width=True)
-        except Exception:
-            st.error("Gagal memuat tren pertumbuhan makro historis.")
+        except Exception as e:
+            st.error(f"Gagal memuat tren pertumbuhan makro historis: {e}")
 
     def buat_area_struktur(df_aktif):
         if df_aktif is not None and not df_aktif.empty and 'sektor' in df_aktif.columns and 'kontribusi_sektor' in df_aktif.columns:
@@ -1665,6 +1743,7 @@ elif main_menu == "📍 Ekonomi Daerah":
         if df_aktif is None or df_aktif.empty:
             st.info(f"🎯 *[Grafik Scatter Plot {jenis_analisis} akan muncul otomatis setelah data sektoral provinsi termuat]*")
             return
+
         if jenis_analisis == "Overlay":
             judul_full = 'Scatter Plot "Overlay (MRP - LQ) 2025"'
             help_teks = "Metode Overlay merupakan teknik yang menggabungkan hasil analisis Location Quotient (LQ) dan Model Rasio Pertumbuhan (MRP)..."
@@ -1700,10 +1779,13 @@ elif main_menu == "📍 Ekonomi Daerah":
 
     def format_val_daerah(val, unit=""):
         if pd.isna(val) or val == "" or str(val).lower() == 'nan': return "-"
-        try:
-            return f"{float(val):.1f}{unit}"
-        except ValueError:
-            return f"{val}{unit}"
+        try: return f"{float(val):,.1f}{unit}"
+        except ValueError: return f"{val}{unit}"
+
+    def format_gini_daerah(val):
+        if pd.isna(val) or val == "" or str(val).lower() == 'nan': return "-"
+        try: return f"{float(val):.3f}"
+        except ValueError: return f"{val}"
 
     # ==============================================================================
     # UI DASHBOARD DAERAH
@@ -1716,7 +1798,6 @@ elif main_menu == "📍 Ekonomi Daerah":
         list_provinsi = [
             "Aceh", "Sumatera Utara", "Sumatera Barat", "Riau", "Jambi", "Sumatera Selatan", "Bengkulu", "Lampung", "Kepulauan Bangka Belitung", "Kepulauan Riau", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "DI Yogyakarta", "Jawa Timur", "Banten", "Bali", "Nusa Tenggara Barat", "Nusa Tenggara Timur", "Kalimantan Barat", "Kalimantan Tengah", "Kalimantan Selatan", "Kalimantan Timur", "Kalimantan Utara", "Sulawesi Utara", "Sulawesi Tengah", "Sulawesi Selatan", "Sulawesi Tenggara", "Gorontalo", "Sulawesi Barat", "Maluku", "Maluku Utara", "Papua Barat", "Papua Barat Daya", "Papua", "Papua Selatan", "Papua Tengah", "Papua Pegunungan"
         ]
-        # Penambahan key="daerah_prov" agar widget selectbox tidak bentrok dengan modul lain
         provinsi_terpilih = st.selectbox("Pilih Wilayah Analisis:", list_provinsi, key="daerah_prov")
 
     with col_tahun:
@@ -1749,13 +1830,14 @@ elif main_menu == "📍 Ekonomi Daerah":
     col_Grafik1, col_Grafik2 = st.columns(2)
     with col_Grafik1:
         st.subheader(f"Laju Pertumbuhan Ekonomi ({tahun_terpilih})")
-        buat_bar_chart_makro(df_all_prov, "Pertumbuhan Ekonomi")
+        buat_bar_chart_makro(df_all_prov, "Pertumbuhan Ekonomi", provinsi_terpilih)
     with col_Grafik2:
         st.subheader(f"Kontribusi PDRB terhadap Nasional ({tahun_terpilih})")
-        buat_bar_chart_makro(df_all_prov, "Kontribusi PDRB")
+        buat_bar_chart_makro(df_all_prov, "Kontribusi PDRB", provinsi_terpilih)
 
     st.subheader(f"🗺️ Sebaran Klasifikasi Wilayah")
-    buat_peta_klasifikasi(df_all_prov)
+    buat_peta_klasifikasi(df_all_prov, provinsi_terpilih)
+    st.markdown("***Catatan:*** *Klasifikasi menggunakan metode Tipologi Klassen dengan mempertimbangkan rata-rata pertumbuhan ekonomi dan PDRB per Kapita Tahun 2022-2025*")
 
     st.markdown("---")
     st.header(f"2. KINERJA INDIKATOR EKONOMI DAN SOSIAL {provinsi_terpilih.upper()}")
@@ -1765,16 +1847,18 @@ elif main_menu == "📍 Ekonomi Daerah":
 
     st.write(f"**Capaian Laju Pertumbuhan Ekonomi Makro Daerah**")
     q1, q2, q3, q4, q5 = st.columns(5)
+    
+    # PERBAIKAN DI SINI: Semua pemanggilan format menggunakan fungsi berakhiran _daerah
     q1.metric("TW I YoY (%)", format_val_daerah(df_active_dict.get("lpe_tw1")))
     q2.metric("TW II YoY (%)", format_val_daerah(df_active_dict.get("lpe_tw2")))
-    q3.metric("TW III YoY (%)", format_val_daerah(df_active_dict.get("lpe_tw3"), "%"))
-    q4.metric("TW IV YoY (%)", format_val_daerah(df_active_dict.get("lpe_tw4"), "%"))
+    q3.metric("TW III YoY (%)", format_val_daerah(df_active_dict.get("lpe_tw3")))
+    q4.metric("TW IV YoY (%)", format_val_daerah(df_active_dict.get("lpe_tw4")))
 
     capaian_ctc = df_active_dict.get("lpe_ctc", np.nan)
     capaian_ctc_str = format_val_daerah(capaian_ctc)
 
     with q5:
-        st.markdown(f'<div style="background-color:#0A192F; color:white; padding:10px; border-radius:5px; text-align:center;"><p style="margin:0; font-size:12px;">Capaian c-to-c (%)</p><h3 style="margin:0; color:#00CC96;">{capaian_ctc_str}</h3></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background-color:#0A192F; color:white; padding:10px; border-radius:5px; text-align:center;"><p style="margin:0; font-size:15px;">Capaian c-to-c (%)</p><h3 style="margin:0; color:#00CC96;">{capaian_ctc_str}</h3></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container():
@@ -1796,35 +1880,39 @@ elif main_menu == "📍 Ekonomi Daerah":
     buat_area_struktur(df_struktur_aktif)
 
     st.markdown("#### Indikator Ekonomi dan Sosial Lainnya")
-    col_ek1, col_ek2, col_ek3, col_ek4, col_ek5 = st.columns(5)
-    with col_ek1: st.metric(label="PDRB Perkapita (Juta Rp)", value=format_val_daerah(df_active_dict.get('pdrb_perkapita')))
+    col_ek1, col_ek2, col_ek3, col_ek4 = st.columns(4)
+    with col_ek1: st.metric(label="PDRB Perkapita (Juta Rupiah)", value=format_val_daerah(df_active_dict.get('pdrb_perkapita')))
     with col_ek2: st.metric(label="Inflasi Tahunan (%)", value=format_val_daerah(df_active_dict.get('inflasi')))
-    with col_ek3:
-        st.markdown("**Nilai Investasi:**")
-        st.write(f"• PMA: {format_val_daerah(df_active_dict.get('pma'))}")
-        st.write(f"• PMDN: {format_val_daerah(df_active_dict.get('pmdn'))}")
-    with col_ek4: st.metric(label="Ekspor Terbesar", value=format_val_daerah(df_active_dict.get('ekspor_top3')))
-    with col_ek5: st.metric(label="Tenaga Kerja Terbesar", value=format_val_daerah(df_active_dict.get('naker_top')))
+    with col_ek3: st.metric(label="Nilai PMA (Juta USD)", value=format_val_daerah(df_active_dict.get('pma')))
+    with col_ek4: st.metric(label="Nilai PMDN (Miliar Rupiah)", value=format_val_daerah(df_active_dict.get('pmdn')))
 
     col_sos1, col_sos2, col_sos3, col_sos4 = st.columns(4)
     with col_sos1: st.metric(label="IPM", value=format_val_daerah(df_active_dict.get('ipm')))
     with col_sos2: st.metric(label="Kemiskinan (%)", value=format_val_daerah(df_active_dict.get('kemiskinan')))
     with col_sos3: st.metric(label="TPT (%)", value=format_val_daerah(df_active_dict.get('tpt')))
-    with col_sos4: st.metric(label="Rasio Gini", value=format_val_daerah(df_active_dict.get('gini')))
+    with col_sos4: st.metric(label="Rasio Gini", value=format_gini_daerah(df_active_dict.get('gini')))
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_bawah1, col_bawah2 = st.columns(2)
+    with col_bawah1:
+        nilai_ekspor = format_val_daerah(df_active_dict.get('ekspor_top3'))
+        st.markdown(f'<div style="line-height: 1.3;"><p style="margin:0; font-size:14px; font-weight:500; opacity: 0.8;">Ekspor Terbesar</p><h3 style="margin:0; font-size:16px; font-weight:600; color: var(--text-color, inherit); white-space: normal; word-wrap: break-word;">{nilai_ekspor}</h3></div>', unsafe_allow_html=True)
+    with col_bawah2:
+        nilai_naker = format_val_daerah(df_active_dict.get('naker_top'))
+        st.markdown(f'<div style="line-height: 1.3;"><p style="margin:0; font-size:14px; font-weight:500; opacity: 0.8;">Tenaga Kerja Terbesar</p><h3 style="margin:0; font-size:16px; font-weight:600; color: var(--text-color, inherit); white-space: normal; word-wrap: break-word;">{nilai_naker}</h3></div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.header(f"3. ANALISIS SECTOR UNGGULAN DAERAH {provinsi_terpilih.upper()}")
+    st.header(f"3. ANALISIS SEKTOR UNGGULAN DAERAH {provinsi_terpilih.upper()}")
     buat_scatter_sektoral(df_sektoral_aktif, "Overlay")
     buat_scatter_sektoral(df_sektoral_aktif, "Shift Share")
     buat_scatter_sektoral(df_sektoral_aktif, "Tipologi Klassen")
 
     st.markdown("---")
     st.header("4. INTERPRETASI DAN REKOMENDASI")
-    st.markdown("### Interpretasi Sisi Ekonomi")
+    st.markdown("### Interpretasi")
     st.info(format_val_daerah(df_active_dict.get("interpretasi_ekonomi_riil")))
-    st.markdown("### Rekomendasi Sisi Ekonomi")
+    st.markdown("### Rekomendasi")
     st.success(format_val_daerah(df_active_dict.get("rekomendasi_ekonomi_riil")))
-
 # =========================================================================
 # MODUL 4: ANALISIS SENSITIVITAS (SEKTOR EKSTERNAL & FISKAL)
 # =========================================================================
