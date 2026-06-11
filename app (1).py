@@ -1740,42 +1740,87 @@ elif "Ekonomi Daerah" in main_menu:
         else:
             st.info("📊 *[Grafik Tren Area Struktur Ekonomi belum dapat dimuat karena data kosong]*")
 
-    def buat_scatter_sektoral(df_aktif, jenis_analisis):
+   def buat_scatter_sektoral(df_aktif, jenis_analisis):
         if df_aktif is None or df_aktif.empty:
             st.info(f"🎯 *[Grafik Scatter Plot {jenis_analisis} akan muncul otomatis setelah data sektoral provinsi termuat]*")
             return
 
         if jenis_analisis == "Overlay":
             judul_full = 'Scatter Plot "Overlay (MRP - LQ) 2025"'
-            help_teks = "Metode Overlay merupakan teknik yang menggabungkan hasil analisis Location Quotient (LQ) dan Model Rasio Pertumbuhan (MRP)..."
-            kriteria_teks = "- **Kriteria I (Rasio Pertumbuhan > 1 dan LQ > 1):** Sektor Unggulan...\n- **Kriteria II (Rasio Pertumbuhan > 1 dan LQ < 1):** Sektor Berkembang...\n- **Kriteria III (Rasio Pertumbuhan < 1 dan LQ > 1):** Sektor Potensial...\n- **Kriteria IV (Rasio Pertumbuhan < 1 dan LQ < 1):** Sektor Tertinggal..."
-            col_x, col_y, garis_x, garis_y, labels_x, labels_y = "lq_2025", "rps_2025", 1.0, 1.0, "Location Quotient (LQ)", "Rasio Pertumbuhan Sektoral (RPS)"
+            help_teks = "Metode Overlay merupakan teknik yang menggabungkan hasil analisis Location Quotient (LQ) dan Model Rasio Pertumbuhan (MRP) untuk mengidentifikasi sektor yang memiliki keunggulan sekaligus pertumbuhan yang kuat. Dengan mengombinasikan kedua pendekatan tersebut, metode ini menghasilkan penentuan sektor prioritas yang lebih robust dibandingkan penggunaan satu metode secara terpisah."
+            kriteria_teks = (
+                "- **Kriteria I (Rasio Pertumbuhan > 1 dan LQ > 1):** Sektor Unggulan dan Dominan $\\rightarrow$ sektor dengan pertumbuhan tinggi dan kontribusi besar yang menjadi motor utama perekonomian daerah.\n\n"
+                "- **Kriteria II (Rasio Pertumbuhan > 1 dan LQ < 1):** Sektor Berkembang $\\rightarrow$ sektor dengan pertumbuhan tinggi namun kontribusinya masih kecil, sehingga berpotensi menjadi sumber pertumbuhan baru.\n\n"
+                "- **Kriteria III (Rasio Pertumbuhan < 1 dan LQ > 1):** Sektor Potensial $\\rightarrow$ sektor dengan kontribusi besar tetapi pertumbuhannya mulai melambat, sehingga perlu dijaga keberlanjutannya.\n\n"
+                "- **Kriteria IV (Rasio Pertumbuhan < 1 dan LQ < 1):** Sektor Tertinggal $\\rightarrow$ sektor dengan pertumbuhan dan kontribusi yang rendah, sehingga belum memiliki peran signifikan dalam perekonomian."
+            )
+            col_x, col_y = "lq_2025", "rps_2025"
+            garis_x, garis_y = 1.0, 1.0  
+            labels_x, labels_y = "Location Quotient (LQ)", "Rasio Pertumbuhan Sektoral (RPS)"
+
         elif jenis_analisis == "Shift Share":
             judul_full = 'Scatter Plot "Shift Share 2015/2025"'
-            help_teks = "Metode Shift Share digunakan untuk menguraikan pertumbuhan suatu sektor..."
-            kriteria_teks = "- **Kriteria I (RS + IM +):** Sektor Tumbuh Pesat...\n- **Kriteria II (RS + IM -):** Sektor Berpotensi...\n- **Kriteria III (RS - IM +):** Sektor Berkembang...\n- **Kriteria IV (RS - IM -):** Sektor Tertinggal..."
-            col_x, col_y, garis_x, garis_y, labels_x, labels_y = "im_2025", "rs_2025", 0.0, 0.0, "Regional Share (RS)", "Industrial Mix (IM)"
+            help_teks = "Metode Shift Share digunakan untuk menguraikan pertumbuhan suatu sektor ke dalam komponen pengaruh pertumbuhan nasional, struktur ekonomi, dan daya saing daerah. Melalui metode ini, dapat diketahui apakah kinerja suatu sektor didorong oleh dinamika nasional atau oleh keunggulan kompetitif yang dimiliki daerah."
+            kriteria_teks = (
+                "- **Kriteria I (RS + IM +):** Sektor Tumbuh Pesat $\\rightarrow$ sektor yang memiliki daya saing tinggi di tingkat lokal dan didukung oleh tren pertumbuhan nasional.\n\n"
+                "- **Kriteria II (RS + IM -):** Sektor Berpotensi $\\rightarrow$ sektor yang kuat secara lokal meskipun secara nasional cenderung melambat, sehingga berpotensi menjadi keunggulan spesifik daerah.\n\n"
+                "- **Kriteria III (RS - IM +):** Sektor Berkembang $\\rightarrow$ sektor yang tumbuh secara nasional namun belum diikuti oleh daya saing daerah, sehingga memerlukan penguatan kapasitas lokal.\n\n"
+                "- **Kriteria IV (RS - IM -):** Sektor Tertinggal $\\rightarrow$ sektor dengan daya saing dan pertumbuhan yang rendah baik di tingkat lokal maupun nasional."
+            )
+            col_x, col_y = "im_2025", "rs_2025"
+            garis_x, garis_y = 0.0, 0.0  
+            labels_x, labels_y = "Regional Share (RS)", "Industrial Mix (IM)"
+
         else:  
             judul_full = 'Scatter Plot "Tipologi Klassen Rata-Rata 2022-2025"'
-            help_teks = "Tipologi Klassen merupakan metode klasifikasi sektor..."
-            kriteria_teks = "- **Kriteria I (Pertumbuhan > Nasional dan Kontribusi > Nasional):** Sektor Andalan...\n- **Kriteria II (Pertumbuhan > Nasional dan Kontribusi < Nasional):** Sektor Berkembang...\n- **Kriteria III (Pertumbuhan < Nasional dan Kontribusi > Nasional):** Sektor Potensial...\n- **Kriteria IV (Pertumbuhan < Nasional dan Kontribusi < Nasional):** Sektor Tertinggal..."
-            col_x, col_y, garis_x, garis_y, labels_x, labels_y = "kontribusi_2025", "pertumbuhan_2025", 5.6, 5.1, "Rata-Rata Kontribusi (%)", "Rata-Rata Pertumbuhan (%)"
+            help_teks = "Tipologi Klassen merupakan metode klasifikasi sektor berdasarkan tingkat pertumbuhan dan kontribusinya terhadap perekonomian daerah. Hasil analisisnya memberikan gambaran yang jelas mengenai posisi relatif setiap sektor, mulai dari sektor unggulan hingga sektor yang masih tertinggal, sehingga mendukung perumusan arah pembangunan ekonomi daerah."
+            kriteria_teks = (
+                "- **Kriteria I (Pertumbuhan > Nas & Kontribusi > Nas):** Sektor Andalan $\\rightarrow$ sektor dengan pertumbuhan dan kontribusi tinggi yang menjadi prioritas utama pembangunan ekonomi.\n\n"
+                "- **Kriteria II (Pertumbuhan > Nas & Kontribusi < Nas):** Sektor Berkembang $\\rightarrow$ sektor dengan pertumbuhan tinggi namun kontribusi masih kecil, sehingga berpotensi menjadi andalan baru.\n\n"
+                "- **Kriteria III (Pertumbuhan < Nas & Kontribusi > Nas):** Sektor Potensial $\\rightarrow$ sektor dengan kontribusi besar tetapi pertumbuhan melambat, sehingga perlu dijaga agar tidak menurun.\n\n"
+                "- **Kriteria IV (Pertumbuhan < Nas & Kontribusi < Nas):** Sektor Tertinggal $\\rightarrow$ sektor dengan pertumbuhan dan kontribusi rendah yang memerlukan perhatian dan intervensi khusus."
+            )
+            col_x, col_y = "kontribusi_2025", "pertumbuhan_2025"
+            garis_x, garis_y = 5.6, 5.1  
+            labels_x, labels_y = "Rata-Rata Kontribusi (%)", "Rata-Rata Pertumbuhan (%)"
 
         if col_x not in df_aktif.columns or col_y not in df_aktif.columns:
             return st.warning(f"Kolom {col_x} atau {col_y} tidak ditemukan pada data sektoral.")
 
         st.markdown(f"##### {judul_full}", help=help_teks)
-        col_grafik, col_narasi = st.columns([2, 1])
+        
+        # PERBAIKAN: Melebarkan sedikit porsi kolom narasi agar teks panjang tidak terlalu tergencet
+        col_grafik, col_narasi = st.columns([1.8, 1.2]) 
+        
         with col_grafik:
             warna_map = get_warna_sektor_map(df_aktif.get('sektor', pd.Series(dtype=str)))
-            fig = px.scatter(df_aktif, x=col_x, y=col_y, text="sektor" if "sektor" in df_aktif.columns else None, color="sektor" if "sektor" in df_aktif.columns else None, labels={col_x: labels_x, col_y: labels_y}, color_discrete_map=warna_map)
+            fig = px.scatter(
+                df_aktif, x=col_x, y=col_y, text="sektor" if "sektor" in df_aktif.columns else None,        
+                color="sektor" if "sektor" in df_aktif.columns else None,        
+                labels={col_x: labels_x, col_y: labels_y}, color_discrete_map=warna_map  
+            )
             fig.add_hline(y=garis_y, line_dash="dash", line_color="#475569", line_width=1.5)
             fig.add_vline(x=garis_x, line_dash="dash", line_color="#475569", line_width=1.5)
             fig.update_traces(textposition='top center', marker=dict(size=14))
-            fig.update_layout(showlegend=False, margin={"r": 20, "t": 30, "l": 20, "b": 20})
+            
+            # Membuat grafik lebih bersih & modern
+            fig.update_layout(
+                showlegend=False, 
+                margin={"r": 20, "t": 30, "l": 20, "b": 20},
+                plot_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showgrid=True, gridcolor='#F1F5F9'),
+                yaxis=dict(showgrid=True, gridcolor='#F1F5F9')
+            )
             st.plotly_chart(fig, use_container_width=True)
+            
         with col_narasi:
-            st.markdown("**Deskripsi Pembagian Kuadran Sektor:**")
+            # Sentuhan UI: Kotak header deskripsi yang rapi dan elegan
+            st.markdown('''
+            <div style="background: rgba(241, 245, 249, 0.8); border-left: 4px solid #3B82F6; padding: 12px 15px; border-radius: 6px; margin-bottom: 15px;">
+                <h6 style="margin: 0; color: #1E293B; font-weight: 700; font-size: 14px;">📖 Deskripsi Kuadran Sektor:</h6>
+            </div>
+            ''', unsafe_allow_html=True)
+            
             st.markdown(kriteria_teks)
 
     def format_val_daerah(val, unit=""):
