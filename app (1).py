@@ -1632,17 +1632,29 @@ elif "Ekonomi Daerah" in main_menu:
                 orientation='h',
                 marker=dict(
                     color=warna_kustom, colorscale=skala_warna, showscale=True,
-                    colorbar=dict(title=label_x, thickness=15, len=0.4, yanchor="middle", y=0.5, outlinewidth=0, ticks=""),
+                    colorbar=dict(title=label_x, thickness=15, len=0.4, yanchor="middle", y=0.5, outlinewidth=0, ticks="", tickfont=dict(size=12)),
                     line=dict(width=0, color='rgba(0,0,0,0)')
                 ),
-                text=df_sorted[kolom_nilai], texttemplate='%{text:.1f}', textposition='outside'
+                text=df_sorted[kolom_nilai], 
+                texttemplate='%{text:.1f}', 
+                textposition='outside',
+                textfont=dict(size=14, color='#1E293B') # <-- PERBESAR UKURAN ANGKA DI LUAR BAR
             ))
-            fig.update_layout(xaxis_title=label_x, yaxis_title="Provinsi")
+            fig.update_layout(
+                xaxis_title=label_x, 
+                yaxis_title="Provinsi",
+                yaxis=dict(tickfont=dict(size=13)), # <-- PERBESAR NAMA PROVINSI
+                xaxis=dict(tickfont=dict(size=13))  # <-- PERBESAR ANGKA SUMBU BAWAH
+            )
         else:
             fig = px.bar(df_sorted, x=kolom_nilai, y="label_provinsi", orientation='h', labels={kolom_nilai: label_x, "label_provinsi": "Provinsi"}, color=kolom_nilai, color_continuous_scale=skala_warna)
-            fig.update_traces(texttemplate='%{x:.1f}', textposition='outside')
+            fig.update_traces(texttemplate='%{x:.1f}', textposition='outside', textfont_size=14) # <-- PERBESAR ANGKA
+            fig.update_layout(
+                yaxis=dict(tickfont=dict(size=13)), 
+                xaxis=dict(tickfont=dict(size=13))
+            )
             
-        fig.update_layout(height=750, margin={"r":40,"t":10,"l":10,"b":10}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+        fig.update_layout(height=800, margin={"r":40,"t":10,"l":10,"b":10}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
 
     def buat_peta_klasifikasi(df_aktif, provinsi_aktif=None):
@@ -1711,7 +1723,8 @@ elif "Ekonomi Daerah" in main_menu:
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=df_prov['tahun'], y=df_prov['lpe_ctc'], name=f"{provinsi}", mode='lines+markers+text',
-                text=df_prov['lpe_ctc'].round(1), textposition='top center', textfont=dict(color='#1E3A8A', size=10),
+                text=df_prov['lpe_ctc'].round(1), textposition='top center', 
+                textfont=dict(color='#1E3A8A', size=14), # <-- PERBESAR ANGKA LABEL BIRU
                 texttemplate='<span style="background-color: #E0F2FE; padding: 2px 4px; border-radius: 3px;">%{text:.1f}</span>',
                 line=dict(width=3, color='#1D4ED8', shape='spline'), marker=dict(size=8)
             ))
@@ -1721,11 +1734,19 @@ elif "Ekonomi Daerah" in main_menu:
                 fig.add_trace(go.Scatter(
                     x=df_prov['tahun'], y=df_prov['lpe_nasional'], name='Nasional          Catatan: Data tahun 2026 bersifat sementara (c-to-c)', 
                     mode='lines+markers+text', text=df_prov['lpe_nasional'].round(1), textposition='top center',
-                    textfont=dict(color='#7F1D1D', size=10), texttemplate='<span style="background-color: #FFE4E6; padding: 2px 4px; border-radius: 3px;">%{text:.1f}</span>',
+                    textfont=dict(color='#7F1D1D', size=14), # <-- PERBESAR ANGKA LABEL MERAH
+                    texttemplate='<span style="background-color: #FFE4E6; padding: 2px 4px; border-radius: 3px;">%{text:.1f}</span>',
                     line=dict(dash='dash', width=2.5, color='#DC2626', shape='spline'), marker=dict(size=8)
                 ))
             
-            fig.update_layout(xaxis=dict(dtick=1, type='category'), yaxis=dict(tickformat='.1f'), xaxis_title="Tahun", yaxis_title="Pertumbuhan Ekonomi (%)", margin={"r":10,"t":30,"l":10,"b":10}, legend_orientation="h")
+            fig.update_layout(
+                xaxis=dict(dtick=1, type='category', tickfont=dict(size=13)), # <-- PERBESAR ANGKA TAHUN
+                yaxis=dict(tickformat='.1f', tickfont=dict(size=13)),       # <-- PERBESAR ANGKA PERSEN Y
+                xaxis_title="Tahun", 
+                yaxis_title="Pertumbuhan Ekonomi (%)", 
+                margin={"r":10,"t":30,"l":10,"b":10}, 
+                legend=dict(orientation="h", font=dict(size=13))            # <-- PERBESAR TEKS LEGENDA
+            )
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"Gagal memuat tren pertumbuhan makro historis: {e}")
