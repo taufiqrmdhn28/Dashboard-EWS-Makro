@@ -725,8 +725,8 @@ main_menu = st.radio(
     "Pilih Modul Analisis:",
     [
         "📊 Makro Nasional (DFM)", 
-        "🚢 Intelijen Komoditas & Eksternal", 
-        "📍 Ekonomi Daerah (WIP)", 
+        "🚢 Analisis Komoditas & Eksternal", 
+        "📍 Ekonomi Daerah", 
         "🌍 Analisis Sensitivitas", 
         "🧠 AI Executive Brief (Synthesis)"
     ],
@@ -1246,7 +1246,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
 # =========================================================================
 # MODUL 2: ANALISIS KOMODITAS & EKSTERNAL
 # =========================================================================
-elif main_menu == "🚢 Intelijen Komoditas & Eksternal":
+elif main_menu == "🚢 Analisis Komoditas & Eksternal":
     with st.sidebar:
         st.markdown("### 🔍 PARAMETER INTELIJEN")
         f_tahun_b = st.selectbox("Tahun Data", reversed(TAHUN_TERSEDIA_BPS), index=1, key="exim_yr")
