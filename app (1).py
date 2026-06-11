@@ -1740,7 +1740,7 @@ elif "Ekonomi Daerah" in main_menu:
         else:
             st.info("📊 *[Grafik Tren Area Struktur Ekonomi belum dapat dimuat karena data kosong]*")
 
-   def buat_scatter_sektoral(df_aktif, jenis_analisis):
+    def buat_scatter_sektoral(df_aktif, jenis_analisis):
         if df_aktif is None or df_aktif.empty:
             st.info(f"🎯 *[Grafik Scatter Plot {jenis_analisis} akan muncul otomatis setelah data sektoral provinsi termuat]*")
             return
