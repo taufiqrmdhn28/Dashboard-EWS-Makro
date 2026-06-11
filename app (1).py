@@ -14,6 +14,7 @@ from datetime import datetime
 import traceback
 import re
 import gdown
+import json
 
 # Abaikan warning agar terminal bersih
 warnings.filterwarnings('ignore')
