@@ -1810,19 +1810,6 @@ elif "Ekonomi Daerah" in main_menu:
     df_sektoral_aktif = load_data_sektoral_aman_daerah(provinsi_terpilih)
     df_struktur_aktif = load_data_struktur_aman_daerah(provinsi_terpilih)
 
-    st.markdown("#### 📊 Status Pemuatan Data Monitoring")
-    status_makro, status_sektoral, status_struktur = st.columns(3)
-    with status_makro:
-        if not df_all_prov.empty: st.success(f"✓ Data Makro ({len(df_all_prov)} Wilayah Terload)")
-        else: st.error(f"❌ Data Makro {tahun_terpilih} Kosong/Tidak Ditemukan")
-    with status_sektoral:
-        if not df_sektoral_aktif.empty: st.success(f"✓ Data Sektoral ({len(df_sektoral_aktif)} Sektor Terload)")
-        else: st.error("❌ Data Sektoral Kosong")
-    with status_struktur:
-        if not df_struktur_aktif.empty: st.success(f"✓ Data Struktur ({len(df_struktur_aktif)} Tren Terload)")
-        else: st.error("❌ Data Struktur Kosong")
-
-    st.markdown("---")
 
     df_row = df_all_prov[(df_all_prov['provinsi'] == provinsi_terpilih) & (df_all_prov['tahun'] == int(tahun_terpilih))]
     df_active_dict = df_row.iloc[0].to_dict() if not df_row.empty else {}
@@ -1859,7 +1846,7 @@ elif "Ekonomi Daerah" in main_menu:
     capaian_ctc_str = format_val_daerah(capaian_ctc)
 
     with q5:
-        st.markdown(f'<div style="background-color:#0A192F; color:white; padding:10px; border-radius:5px; text-align:center;"><p style="margin:0; font-size:15px;">Capaian c-to-c (%)</p><h3 style="margin:0; color:#00CC96;">{capaian_ctc_str}</h3></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background-color:#0A192F; color:white; padding:10px; border-radius:5px; text-align:center;"><p style="margin:0; font-size:20px;">Capaian c-to-c (%)</p><h3 style="margin:0; color:#00CC96;">{capaian_ctc_str}</h3></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container():
