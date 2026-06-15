@@ -2428,6 +2428,40 @@ elif main_menu == "🧠 AI Executive Brief (Synthesis)":
                             total_val = df_exim_ai['value'].sum() / (1e9 if meta_exim_ai.get('unit') == 'Miliar USD' else 1)
                             arah = meta_exim_ai.get('sumber', 'Perdagangan')
                             exim_info = f"Total {arah} mencapai {total_val:,.2f} {meta_exim_ai.get('unit', 'USD')}. Perlu atensi pada stabilitas volume komoditas unggulan dan diversifikasi pasar."
+                        
+                        # --- TANGKAP DATA KEWILAYAHAN UNTUK AI ---
+                        regional_info = "Data kewilayahan belum termuat secara penuh."
+                        try:
+                            import os
+                            import pandas as pd
+                            base_dir = os.path.dirname(os.path.abspath(__file__))
+                            path_daerah = os.path.join(base_dir, 'data_ekonomi.xlsx')
+                            if not os.path.exists(path_daerah):
+                                path_daerah = os.path.join(base_dir, 'data', 'data_ekonomi.xlsx')
+                            
+                            if os.path.exists(path_daerah):
+                                df_d = pd.read_excel(path_daerah, engine='openpyxl')
+                                df_d.columns = df_d.columns.astype(str).str.strip().str.lower()
+                                df_d['tahun'] = pd.to_numeric(df_d['tahun'], errors='coerce')
+                                df_d['lpe_ctc'] = pd.to_numeric(df_d['lpe_ctc'].astype(str).str.replace(',', '.'), errors='coerce')
+                                df_d['kontribusi'] = pd.to_numeric(df_d['kontribusi'].astype(str).str.replace(',', '.'), errors='coerce')
+                                
+                                t_max = df_d['tahun'].max()
+                                df_latest = df_d[df_d['tahun'] == t_max]
+                                
+                                top_g = ", ".join([f"{r['provinsi']} ({r['lpe_ctc']}%)" for _, r in df_latest.nlargest(3, 'lpe_ctc').iterrows()])
+                                bot_g = ", ".join([f"{r['provinsi']} ({r['lpe_ctc']}%)" for _, r in df_latest.nsmallest(3, 'lpe_ctc').iterrows()])
+                                top_k = ", ".join([f"{r['provinsi']} ({r['kontribusi']}%)" for _, r in df_latest.nlargest(3, 'kontribusi').iterrows()])
+                                
+                                if 'klasifikasi' in df_latest.columns:
+                                    klas = df_latest['klasifikasi'].value_counts()
+                                    klas_str = ", ".join([f"{k} ({v} Prov)" for k, v in klas.items()])
+                                else:
+                                    klas_str = "-"
+                                    
+                                regional_info = f"Tahun Analisis: {int(t_max)}. LPE Tertinggi: {top_g}. LPE Terendah: {bot_g}. Top Kontributor PDRB thd Nasional: {top_k}. Sebaran Klasifikasi Wilayah (Tipologi Klassen): {klas_str}."
+                        except Exception:
+                            pass
                         # ---------------------------------------------------
 
                         prompt = f"""
@@ -2441,10 +2475,10 @@ ATURAN MUTLAK DAN SANGAT PENTING:
 4. Fokus pada penyelesaian masalah (problem-solving), optimalisasi tata niaga, dan antisipasi risiko ke depan.
 
 =====================
-DATA & EVIDENCE MAKRO-EKSTERNAL (EARLY WARNING)
+DATA & EVIDENCE MAKRO, EKSTERNAL & KEWILAYAHAN
 =====================
-Fokus Indikator: {mac_view}
-Target PDB: {mac_target}% | Proyeksi DFM: {mac_avg:.2f}%
+Fokus Indikator Makro: {mac_view}
+Target PDB Nasional: {mac_target}% | Proyeksi DFM: {mac_avg:.2f}%
 Status Real Sector: {mac_month}
 Momentum Indikator: {mac_heat}
 Pasar Harian: {mac_day}
@@ -2452,6 +2486,7 @@ Guncangan Eksternal: NT Rp {ext_nt}/USD, ICP $ {ext_oil}/bbl
 Dampak Skenario Eksternal: PDB {ext_gdp_drop:+.2f} pp, Defisit APBN {ext_def:+.2f} pp thd PDB.
 Kondisi Ekspor-Impor: {exim_info}
 Isu Kebocoran Perdagangan: {mirroring_info}
+Dinamika Ekonomi Kewilayahan: {regional_info}
 
 =====================
 STRUKTUR EXECUTIVE BRIEF:
@@ -2461,13 +2496,16 @@ STRUKTUR EXECUTIVE BRIEF:
 **1. ASESMEN RISIKO DAN POSISI STRATEGIS BAPPENAS**
 (Analisis perkembangan terkini dari makro nasional, hasil simulasi guncangan eksternal (Rupiah & Minyak), SERTA evaluasi kinerja ekspor-impor dan indikasi kebocoran/asimetri data perdagangan. Berdasarkan data early warning di atas, deklarasikan posisi/stance Bappenas dengan tegas: apakah situasi ini terkendali, waspada, atau krisis? Apa *root cause* permasalahannya?).
 
-**2. STRATEGI DAN SOLUSI KOMPREHENSIF**
-(Jabarkan grand strategy atau solusi menyeluruh dari Bappenas untuk menyelesaikan permasalahan yang teridentifikasi di poin 1. Jelaskan bagaimana Bappenas akan mengorkestrasi penyelesaian masalah ini secara lintas sektor, termasuk strategi khusus untuk memitigasi kebocoran devisa/pajak akibat asimetri pencatatan perdagangan internasional).
+**2. DINAMIKA EKONOMI KEWILAYAHAN DAN SPASIAL**
+(Lakukan analisis mendalam berdasarkan data 'Dinamika Ekonomi Kewilayahan'. Soroti laju pertumbuhan ekonomi (LPE) antar wilayah yang jomplang, dominasi kontribusi PDRB daerah terhadap nasional, serta sebaran klasifikasi tipologi wilayah. Berikan insight spasial terkait provinsi mana yang menjadi motor penggerak dan mana yang tertinggal, serta implikasinya terhadap pemerataan pembangunan nasional).
 
-**3. REKOMENDASI KEBIJAKAN LINTAS K/L**
-(Berikan arahan kebijakan yang jelas dan *actionable* untuk diimplementasikan oleh Kementerian/Lembaga terkait. Bagi secara tegas berdasarkan horizon waktu):
-* **A. Jangka Pendek (Mitigasi, Stabilisasi & Penertiban):** (Tindakan taktis dan intervensi segera untuk meredam syok eksternal, menjaga target PDB tahun berjalan, stabilisasi harga/inflasi mikro, intervensi pasar, subsidi, dan menjaga batas defisit fiskal. Sertakan juga instruksi pengawasan kepabeanan ketat untuk menekan angka kebocoran ekspor-impor).
-* **B. Jangka Menengah & Panjang (Reformasi Struktural):** (Kebijakan struktural untuk memperkuat fundamental ekonomi makro, resiliensi rantai pasok/industrialisasi, ketahanan energi, penguatan kemandirian sektor unggulan daerah, serta harmonisasi sistem pencatatan devisa hasil ekspor dan audit kepatuhan dengan negara mitra).
+**3. STRATEGI DAN SOLUSI KOMPREHENSIF**
+(Jabarkan grand strategy atau solusi menyeluruh dari Bappenas untuk menyelesaikan permasalahan makro, eksternal, dan ketimpangan wilayah yang teridentifikasi di poin 1 dan 2. Jelaskan bagaimana Bappenas akan mengorkestrasi penyelesaian masalah ini secara lintas sektor dan spasial).
+
+**4. REKOMENDASI KEBIJAKAN LINTAS K/L & PEMDA**
+(Berikan arahan kebijakan yang jelas dan *actionable* untuk diimplementasikan oleh Kementerian/Lembaga terkait dan Pemerintah Daerah. Bagi secara tegas berdasarkan horizon waktu):
+* **A. Jangka Pendek (Mitigasi, Stabilisasi & Penertiban):** (Tindakan taktis dan intervensi segera untuk meredam syok eksternal, menjaga target PDB tahun berjalan, stabilisasi harga, menjaga batas defisit fiskal, serta intervensi cepat bagi daerah yang mengalami perlambatan ekstrem).
+* **B. Jangka Menengah & Panjang (Reformasi Struktural):** (Kebijakan struktural untuk memperkuat fundamental ekonomi makro, resiliensi rantai pasok, penguatan kemandirian sektor unggulan daerah/transformasi wilayah berdasarkan Tipologi Klassen, serta harmonisasi sistem pencatatan devisa hasil ekspor dan audit kepatuhan dengan negara mitra).
 """
                         # MENGGUNAKAN STREAM=TRUE AGAR ANTI-TIMEOUT DAN ANTI-KEPOTONG
                         res = model.generate_content(
@@ -2526,7 +2564,7 @@ STRUKTUR EXECUTIVE BRIEF:
             </head>
             <body>
                 <div class="document-wrapper">
-                    <div class="header-banner"><h1>Executive Brief</h1><p>Sintesis Makroekonomi & Kebijakan Lintas Sektoral</p></div>
+                    <div class="header-banner"><h1>Executive Brief</h1><p>Sintesis Makroekonomi, Kewilayahan & Lintas Sektoral</p></div>
                     <div class="content-area">{html_policy}</div>
                     <div class="footer-note">Dihasilkan oleh Macro AI Command Center - Kementerian PPN/Bappenas RI<br><em>Dokumen Internal Terbatas</em></div>
                 </div>
