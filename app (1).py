@@ -2511,18 +2511,44 @@ STRUKTUR EXECUTIVE BRIEF:
                         res = model.generate_content(
                             prompt, generation_config=generation_config, safety_settings=safety_settings, stream=True
                         )
+                        
                         out_text = ""
-                        for chunk in res: out_text += chunk.text
+                        
+                        # --- PERBAIKAN: EKSTRAKSI TEKS AMAN (ANTI ERROR FINISH_REASON 1) ---
+                        for chunk in res: 
+                            try:
+                                # Hanya ambil teks jika potongan datanya valid dan tidak kosong
+                                if chunk.text:
+                                    out_text += chunk.text
+                            except Exception:
+                                pass # Abaikan dengan tenang jika server mengirim chunk kosong
+                        # ------------------------------------------------------------------
+                        
                         out_text = out_text.strip()
+                        
+                        # Bersihkan tag markdown bawaan AI jika ada
                         if out_text.startswith("```markdown"):
-                            out_text = out_text.replace("```markdown", "").replace("```", "").strip()
+                            out_text = out_text.replace("```markdown", "", 1)
+                        if out_text.endswith("```"):
+                            out_text = out_text[::-1].replace("```"[::-1], "", 1)[::-1]
+                        out_text = out_text.strip()
 
                         st.session_state.policy_cache[signature] = out_text
-                        with open(CACHE_FILE, "wb") as f: pickle.dump(st.session_state.policy_cache, f)
+                        
+                        # Simpan ke cache agar tidak perlu generate ulang jika halaman direfresh
+                        try:
+                            import pickle
+                            with open(CACHE_FILE, "wb") as f: 
+                                pickle.dump(st.session_state.policy_cache, f)
+                        except Exception:
+                            pass 
+
                         st.session_state[editor_key] = out_text
                         st.success("Sintesis Selesai secara Penuh!")
                         st.rerun()
-                except Exception as e: st.error(f"Error AI: {e}")
+                        
+                except Exception as e: 
+                    st.error(f"Error AI: {e}")
 
     if editor_key in st.session_state:
         st.markdown("---")
