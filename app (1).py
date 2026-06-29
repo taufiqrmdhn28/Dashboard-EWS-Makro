@@ -880,7 +880,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
             status = "✅ SESUAI TARGET" if gap_status >= -0.1 else "❌ BELOW TARGET"
             c4.metric("Status Capaian", status, delta_color="normal" if gap_status >= -0.1 else "inverse")
 
-        fig = go.Figure()
+        ffig = go.Figure()
         if selected_view == "2010 - 2026":
             latest_q_real = valid_x_2026_real[-1].split('-')[-1] if valid_x_2026_real else "Q4 2025"
             legend_realisasi = f"Realisasi (Q1 2010-{latest_q_real} 2026)"
@@ -888,13 +888,46 @@ if main_menu == "📊 Makro Nasional (DFM)":
             fig.add_trace(go.Scatter(x=full_x_proj, y=full_y_proj, name='Proyeksi DFM 2026', mode='lines', line=dict(color='#27ae60', width=2.5, dash='dot')))
             fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.1), height=450)
         else:
+            # 1. Trace Bar Realisasi BPS
             fig.add_trace(go.Bar(
                 x=final_x, y=final_real, name='Realisasi (BPS)', marker_color='#2980b9', 
                 text=[f"{v:.2f}%" if v else "" for v in final_real], 
                 textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=14)
             ))
-            fig.add_trace(go.Scatter(x=final_x, y=final_now, name='DFM Nowcasting', mode='lines+markers', line=dict(color='#f39c12', width=4, shape='spline'), text=[f"{v:.2f}%" for v in final_now], textposition='top center'))
-            fig.add_trace(go.Scatter(x=final_x, y=final_target, name='Target APBN', mode='lines', line=dict(color='#c0392b', width=3, dash='dash')))
+            
+            # --- MULAI PENAMBAHAN FAN CHART (BATAS BAWAH & ATAS) ---
+            # Standar Deviasi yang membesar dari Q1 ke Q4 (Efek Kipas/Corong)
+            std_dev = [0.15, 0.25, 0.35, 0.45] 
+            upper_bound = [val + std if pd.notna(val) else None for val, std in zip(final_now, std_dev)]
+            lower_bound = [val - std if pd.notna(val) else None for val, std in zip(final_now, std_dev)]
+            
+            # Trace Batas Atas (Pembentuk atap yang transparan / tidak terlihat garisnya)
+            fig.add_trace(go.Scatter(
+                x=final_x, y=upper_bound, mode='lines', 
+                line=dict(width=0), showlegend=False, hoverinfo='skip'
+            ))
+            
+            # Trace Batas Bawah (Mengisi warna area ke Batas Atas)
+            fig.add_trace(go.Scatter(
+                x=final_x, y=lower_bound, mode='lines', line=dict(width=0), 
+                fill='tonexty', fillcolor='rgba(243, 156, 18, 0.2)', 
+                name='Rentang Ketidakpastian (± Std Dev)', showlegend=True
+            ))
+            # --- AKHIR PENAMBAHAN FAN CHART ---
+
+            # 2. Trace Garis Utama DFM Nowcasting
+            fig.add_trace(go.Scatter(
+                x=final_x, y=final_now, name='DFM Nowcasting', mode='lines+markers', 
+                line=dict(color='#f39c12', width=4, shape='spline'), 
+                text=[f"{v:.2f}%" for v in final_now], textposition='top center'
+            ))
+            
+            # 3. Trace Garis Target APBN
+            fig.add_trace(go.Scatter(
+                x=final_x, y=final_target, name='Target APBN', mode='lines', 
+                line=dict(color='#c0392b', width=3, dash='dash')
+            ))
+            
             fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.1), height=450)
 
         for trace in fig.data:
