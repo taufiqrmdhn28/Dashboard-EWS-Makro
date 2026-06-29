@@ -897,7 +897,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
             ))
             
             # --- PENAMBAHAN GARIS BATAS ATAS & BAWAH ---
-            std_dev = [0.15, 0.25, 0.35, 0.45] 
+            std_dev = [0.30, 0.30, 0.30, 0.30] 
             upper_bound = [val + std if pd.notna(val) else None for val, std in zip(final_now, std_dev)]
             lower_bound = [val - std if pd.notna(val) else None for val, std in zip(final_now, std_dev)]
             
