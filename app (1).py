@@ -880,7 +880,8 @@ if main_menu == "📊 Makro Nasional (DFM)":
             status = "✅ SESUAI TARGET" if gap_status >= -0.1 else "❌ BELOW TARGET"
             c4.metric("Status Capaian", status, delta_color="normal" if gap_status >= -0.1 else "inverse")
 
-        ffig = go.Figure()
+        fig = go.Figure()
+
         if selected_view == "2010 - 2026":
             latest_q_real = valid_x_2026_real[-1].split('-')[-1] if valid_x_2026_real else "Q4 2025"
             legend_realisasi = f"Realisasi (Q1 2010-{latest_q_real} 2026)"
@@ -895,25 +896,17 @@ if main_menu == "📊 Makro Nasional (DFM)":
                 textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=14)
             ))
             
-            # --- MULAI PENAMBAHAN FAN CHART (BATAS BAWAH & ATAS) ---
-            # Standar Deviasi yang membesar dari Q1 ke Q4 (Efek Kipas/Corong)
+            # --- PENAMBAHAN FAN CHART ---
             std_dev = [0.15, 0.25, 0.35, 0.45] 
             upper_bound = [val + std if pd.notna(val) else None for val, std in zip(final_now, std_dev)]
             lower_bound = [val - std if pd.notna(val) else None for val, std in zip(final_now, std_dev)]
             
-            # Trace Batas Atas (Pembentuk atap yang transparan / tidak terlihat garisnya)
-            fig.add_trace(go.Scatter(
-                x=final_x, y=upper_bound, mode='lines', 
-                line=dict(width=0), showlegend=False, hoverinfo='skip'
-            ))
-            
-            # Trace Batas Bawah (Mengisi warna area ke Batas Atas)
+            fig.add_trace(go.Scatter(x=final_x, y=upper_bound, mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
             fig.add_trace(go.Scatter(
                 x=final_x, y=lower_bound, mode='lines', line=dict(width=0), 
                 fill='tonexty', fillcolor='rgba(243, 156, 18, 0.2)', 
-                name='Rentang Ketidakpastian (± Std Dev)', showlegend=True
+                name='Rentang Ketidakpastian', showlegend=True
             ))
-            # --- AKHIR PENAMBAHAN FAN CHART ---
 
             # 2. Trace Garis Utama DFM Nowcasting
             fig.add_trace(go.Scatter(
@@ -930,68 +923,43 @@ if main_menu == "📊 Makro Nasional (DFM)":
             
             fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.1), height=450)
 
+        # --- RE-FORMATTING LABEL & TRACES ---
         for trace in fig.data:
             trace_name = getattr(trace, 'name', '')
             if "Realisasi" in trace_name and "2010-" in trace_name:
                 text_labels, marker_sizes, text_pos = [], [], []
-                if trace.x is not None and trace.y is not None:
-                    for i, y_val in enumerate(trace.y):
-                        if i == len(trace.x) - 1 and pd.notna(y_val): 
-                            text_labels.append(f"<b>{float(y_val):.2f}%</b>")
-                            marker_sizes.append(10)
-                            text_pos.append("top center") 
-                        else:
-                            text_labels.append(""); marker_sizes.append(0); text_pos.append("top center")
-                    trace.mode = "lines+markers+text"
-                    trace.text = text_labels
-                    trace.textposition = text_pos 
-                    trace.textfont = dict(size=13, color="#0f172a") 
-                    if not hasattr(trace, 'marker') or trace.marker is None: trace.marker = dict()
-                    trace.marker.size = marker_sizes
-                    trace.marker.symbol = "circle"
-                    trace.marker.color = "#f1c40f"
-                    trace.marker.line = dict(width=2, color="white")
+                for i, y_val in enumerate(trace.y):
+                    if i == len(trace.x) - 1 and pd.notna(y_val): 
+                        text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(10); text_pos.append("top center") 
+                    else:
+                        text_labels.append(""); marker_sizes.append(0); text_pos.append("top center")
+                trace.update(mode="lines+markers+text", text=text_labels, textposition=text_pos, textfont=dict(size=13, color="#0f172a"))
+                if not trace.marker: trace.marker = dict()
+                trace.marker.update(size=marker_sizes, symbol="circle", color="#f1c40f", line=dict(width=2, color="white"))
                     
             elif trace_name == 'Proyeksi DFM 2026':
                 text_labels, marker_sizes, text_pos = [], [], []
-                if trace.x is not None and trace.y is not None:
-                    pos_toggle = True
-                    for i, (x_val, y_val) in enumerate(zip(trace.x, trace.y)):
-                        if i > 0 and '2026' in str(x_val) and pd.notna(y_val):
-                            text_labels.append(f"<b>{float(y_val):.2f}%</b>")
-                            marker_sizes.append(10)
-                            text_pos.append("bottom center" if pos_toggle else "top center")
-                            pos_toggle = not pos_toggle
-                        else:
-                            text_labels.append(""); marker_sizes.append(0); text_pos.append("top center")
-                    trace.mode = "lines+markers+text"
-                    trace.text = text_labels
-                    trace.textposition = text_pos 
-                    trace.textfont = dict(size=13, color="#0f172a")
-                    if not hasattr(trace, 'marker') or trace.marker is None: trace.marker = dict()
-                    trace.marker.size = marker_sizes
-                    trace.marker.symbol = "circle"
-                    trace.marker.color = "#27ae60"
-                    trace.marker.line = dict(width=2, color="white")
+                pos_toggle = True
+                for i, (x_val, y_val) in enumerate(zip(trace.x, trace.y)):
+                    if i > 0 and '2026' in str(x_val) and pd.notna(y_val):
+                        text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(10); text_pos.append("bottom center" if pos_toggle else "top center")
+                        pos_toggle = not pos_toggle
+                    else:
+                        text_labels.append(""); marker_sizes.append(0); text_pos.append("top center")
+                trace.update(mode="lines+markers+text", text=text_labels, textposition=text_pos, textfont=dict(size=13, color="#0f172a"))
+                if not trace.marker: trace.marker = dict()
+                trace.marker.update(size=marker_sizes, symbol="circle", color="#27ae60", line=dict(width=2, color="white"))
                     
             elif trace_name == 'DFM Nowcasting':
                 text_labels, marker_sizes = [], []
-                if trace.x is not None and trace.y is not None:
-                    for y_val in trace.y:
-                        if pd.notna(y_val):
-                            text_labels.append(f"<b>{float(y_val):.2f}%</b>")
-                            marker_sizes.append(11)
-                        else:
-                            text_labels.append(""); marker_sizes.append(0)
-                    trace.mode = "lines+markers+text"
-                    trace.text = text_labels
-                    trace.textposition = "top center" 
-                    trace.textfont = dict(size=14, color="#0f172a")
-                    if not hasattr(trace, 'marker') or trace.marker is None: trace.marker = dict()
-                    trace.marker.size = marker_sizes
-                    trace.marker.symbol = "circle"
-                    trace.marker.color = "#f39c12" 
-                    trace.marker.line = dict(width=2, color="white")
+                for y_val in trace.y:
+                    if pd.notna(y_val):
+                        text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(11)
+                    else:
+                        text_labels.append(""); marker_sizes.append(0)
+                trace.update(mode="lines+markers+text", text=text_labels, textposition="top center", textfont=dict(size=14, color="#0f172a"))
+                if not trace.marker: trace.marker = dict()
+                trace.marker.update(size=marker_sizes, symbol="circle", color="#f39c12", line=dict(width=2, color="white"))
 
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
@@ -1001,12 +969,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df_full_results.to_excel(writer, index=False, sheet_name='Nowcast Results')
-            st.download_button(
-                label="📥 Download Full Nowcast Results (Excel)",
-                data=buffer.getvalue(),
-                file_name="Replikasi_Final_MATLAB_Elaborated.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            st.download_button("📥 Download Full Nowcast Results (Excel)", data=buffer.getvalue(), file_name="Replikasi_Final_MATLAB_Elaborated.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown("### 📈 Monitoring Data Harian")
