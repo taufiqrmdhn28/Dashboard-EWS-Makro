@@ -880,7 +880,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
             status = "✅ SESUAI TARGET" if gap_status >= -0.1 else "❌ BELOW TARGET"
             c4.metric("Status Capaian", status, delta_color="normal" if gap_status >= -0.1 else "inverse")
 
-        fig = go.Figure()
+       fig = go.Figure()
 
         if selected_view == "2010 - 2026":
             latest_q_real = valid_x_2026_real[-1].split('-')[-1] if valid_x_2026_real else "Q4 2025"
@@ -896,26 +896,27 @@ if main_menu == "📊 Makro Nasional (DFM)":
                 textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=14)
             ))
             
-            # --- PENAMBAHAN FAN CHART ---
+            # --- PENAMBAHAN GARIS BATAS ATAS & BAWAH ---
             std_dev = [0.15, 0.25, 0.35, 0.45] 
             upper_bound = [val + std if pd.notna(val) else None for val, std in zip(final_now, std_dev)]
             lower_bound = [val - std if pd.notna(val) else None for val, std in zip(final_now, std_dev)]
             
-            fig.add_trace(go.Scatter(x=final_x, y=upper_bound, mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
+            # Trace Batas Atas (Garis Hijau)
             fig.add_trace(go.Scatter(
-                x=final_x, y=lower_bound, mode='lines', line=dict(width=0), 
-                fill='tonexty', fillcolor='rgba(243, 156, 18, 0.2)', 
-                name='Rentang Ketidakpastian', showlegend=True
-            ))
-
-            # 2. Trace Garis Utama DFM Nowcasting
-            fig.add_trace(go.Scatter(
-                x=final_x, y=final_now, name='DFM Nowcasting', mode='lines+markers', 
-                line=dict(color='#f39c12', width=4, shape='spline'), 
-                text=[f"{v:.2f}%" for v in final_now], textposition='top center'
+                x=final_x, y=upper_bound, name='Batas Atas', mode='lines+markers', 
+                line=dict(color='#27ae60', width=3, shape='spline'), 
+                text=[f"{v:.2f}%" if v is not None else "" for v in upper_bound], textposition='top center'
             ))
             
-            # 3. Trace Garis Target APBN
+            # Trace Batas Bawah (Garis Oranye)
+            fig.add_trace(go.Scatter(
+                x=final_x, y=lower_bound, name='Batas Bawah', mode='lines+markers', 
+                line=dict(color='#e67e22', width=3, shape='spline'), 
+                text=[f"{v:.2f}%" if v is not None else "" for v in lower_bound], textposition='bottom center'
+            ))
+            # ----------------------------------------
+            
+            # Trace Garis Target APBN
             fig.add_trace(go.Scatter(
                 x=final_x, y=final_target, name='Target APBN', mode='lines', 
                 line=dict(color='#c0392b', width=3, dash='dash')
@@ -923,11 +924,9 @@ if main_menu == "📊 Makro Nasional (DFM)":
             
             fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.1), height=450)
 
-        # # --- RE-FORMATTING LABEL & TRACES ---
+        # --- RE-FORMATTING LABEL & TRACES ---
         for trace in fig.data:
-            # PERBAIKAN: Memaksa nama menjadi teks (string) agar tidak terjadi TypeError (NoneType)
             trace_name = str(getattr(trace, 'name', ''))
-            
             if "Realisasi" in trace_name and "2010-" in trace_name:
                 text_labels, marker_sizes, text_pos = [], [], []
                 if trace.x is not None and trace.y is not None:
@@ -954,17 +953,23 @@ if main_menu == "📊 Makro Nasional (DFM)":
                 if not trace.marker: trace.marker = dict()
                 trace.marker.update(size=marker_sizes, symbol="circle", color="#27ae60", line=dict(width=2, color="white"))
                     
-            elif trace_name == 'DFM Nowcasting':
+            # Styling untuk Batas Atas dan Batas Bawah
+            elif trace_name in ['Batas Atas', 'Batas Bawah']:
                 text_labels, marker_sizes = [], []
                 if trace.x is not None and trace.y is not None:
                     for y_val in trace.y:
                         if pd.notna(y_val):
-                            text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(11)
+                            text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(10)
                         else:
                             text_labels.append(""); marker_sizes.append(0)
-                trace.update(mode="lines+markers+text", text=text_labels, textposition="top center", textfont=dict(size=14, color="#0f172a"))
+                
+                # Dinamis: Atas posisinya 'top center', Bawah posisinya 'bottom center'
+                pos = "top center" if trace_name == 'Batas Atas' else "bottom center"
+                color_line = "#27ae60" if trace_name == 'Batas Atas' else "#e67e22"
+                
+                trace.update(mode="lines+markers+text", text=text_labels, textposition=pos, textfont=dict(size=14, color="#0f172a"))
                 if not trace.marker: trace.marker = dict()
-                trace.marker.update(size=marker_sizes, symbol="circle", color="#f39c12", line=dict(width=2, color="white"))
+                trace.marker.update(size=marker_sizes, symbol="circle", color=color_line, line=dict(width=2, color="white"))
 
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
