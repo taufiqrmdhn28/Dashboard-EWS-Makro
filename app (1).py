@@ -923,16 +923,19 @@ if main_menu == "📊 Makro Nasional (DFM)":
             
             fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.1), height=450)
 
-        # --- RE-FORMATTING LABEL & TRACES ---
+        # # --- RE-FORMATTING LABEL & TRACES ---
         for trace in fig.data:
-            trace_name = getattr(trace, 'name', '')
+            # PERBAIKAN: Memaksa nama menjadi teks (string) agar tidak terjadi TypeError (NoneType)
+            trace_name = str(getattr(trace, 'name', ''))
+            
             if "Realisasi" in trace_name and "2010-" in trace_name:
                 text_labels, marker_sizes, text_pos = [], [], []
-                for i, y_val in enumerate(trace.y):
-                    if i == len(trace.x) - 1 and pd.notna(y_val): 
-                        text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(10); text_pos.append("top center") 
-                    else:
-                        text_labels.append(""); marker_sizes.append(0); text_pos.append("top center")
+                if trace.x is not None and trace.y is not None:
+                    for i, y_val in enumerate(trace.y):
+                        if i == len(trace.x) - 1 and pd.notna(y_val): 
+                            text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(10); text_pos.append("top center") 
+                        else:
+                            text_labels.append(""); marker_sizes.append(0); text_pos.append("top center")
                 trace.update(mode="lines+markers+text", text=text_labels, textposition=text_pos, textfont=dict(size=13, color="#0f172a"))
                 if not trace.marker: trace.marker = dict()
                 trace.marker.update(size=marker_sizes, symbol="circle", color="#f1c40f", line=dict(width=2, color="white"))
@@ -940,23 +943,25 @@ if main_menu == "📊 Makro Nasional (DFM)":
             elif trace_name == 'Proyeksi DFM 2026':
                 text_labels, marker_sizes, text_pos = [], [], []
                 pos_toggle = True
-                for i, (x_val, y_val) in enumerate(zip(trace.x, trace.y)):
-                    if i > 0 and '2026' in str(x_val) and pd.notna(y_val):
-                        text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(10); text_pos.append("bottom center" if pos_toggle else "top center")
-                        pos_toggle = not pos_toggle
-                    else:
-                        text_labels.append(""); marker_sizes.append(0); text_pos.append("top center")
+                if trace.x is not None and trace.y is not None:
+                    for i, (x_val, y_val) in enumerate(zip(trace.x, trace.y)):
+                        if i > 0 and '2026' in str(x_val) and pd.notna(y_val):
+                            text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(10); text_pos.append("bottom center" if pos_toggle else "top center")
+                            pos_toggle = not pos_toggle
+                        else:
+                            text_labels.append(""); marker_sizes.append(0); text_pos.append("top center")
                 trace.update(mode="lines+markers+text", text=text_labels, textposition=text_pos, textfont=dict(size=13, color="#0f172a"))
                 if not trace.marker: trace.marker = dict()
                 trace.marker.update(size=marker_sizes, symbol="circle", color="#27ae60", line=dict(width=2, color="white"))
                     
             elif trace_name == 'DFM Nowcasting':
                 text_labels, marker_sizes = [], []
-                for y_val in trace.y:
-                    if pd.notna(y_val):
-                        text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(11)
-                    else:
-                        text_labels.append(""); marker_sizes.append(0)
+                if trace.x is not None and trace.y is not None:
+                    for y_val in trace.y:
+                        if pd.notna(y_val):
+                            text_labels.append(f"<b>{float(y_val):.2f}%</b>"); marker_sizes.append(11)
+                        else:
+                            text_labels.append(""); marker_sizes.append(0)
                 trace.update(mode="lines+markers+text", text=text_labels, textposition="top center", textfont=dict(size=14, color="#0f172a"))
                 if not trace.marker: trace.marker = dict()
                 trace.marker.update(size=marker_sizes, symbol="circle", color="#f39c12", line=dict(width=2, color="white"))
