@@ -880,7 +880,7 @@ if main_menu == "📊 Makro Nasional (DFM)":
             status = "✅ SESUAI TARGET" if gap_status >= -0.1 else "❌ BELOW TARGET"
             c4.metric("Status Capaian", status, delta_color="normal" if gap_status >= -0.1 else "inverse")
 
-       fig = go.Figure()
+        fig = go.Figure()
 
         if selected_view == "2010 - 2026":
             latest_q_real = valid_x_2026_real[-1].split('-')[-1] if valid_x_2026_real else "Q4 2025"
