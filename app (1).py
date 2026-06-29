@@ -1986,24 +1986,31 @@ elif main_menu == "🌍 Analisis Sensitivitas":
         st.divider()
         st.markdown("**PRESET SKENARIO CEPAT**")
         preset = st.selectbox("Pilih preset", [
-            "-- pilih --", "📊 Base Med", "📈 Base High", "📉 Depresiasi (NT 19.500)",
-            "🛢 Minyak Rendah ($40)", "🔥 Minyak Tinggi ($100)", "⚡ Twin Shock (NT 20.000, ICP $100)",
+            "-- pilih --", "📊 Base Med", "📈 Base High", "📉 Depresiasi",
+            "🛢 Minyak Rendah", "🔥 Minyak Tinggi", "⚡ Twin Shock",
         ])
 
+        # Penentuan nilai absolut awal berdasarkan preset yang dipilih
         if   "Depresiasi" in preset: nt_init, oil_init = 19_500,       icp_default
         elif "Rendah"     in preset: nt_init, oil_init = nt_default,  40
         elif "Tinggi"     in preset: nt_init, oil_init = nt_default,  100
         elif "Twin"       in preset: nt_init, oil_init = 20_000,      100
         else:                        nt_init, oil_init = nt_default,  icp_default
 
-        st.divider()
-        st.markdown("**NILAI TUKAR (Rp/USD)**")
-        nt = st.number_input("NT", min_value=10_000, max_value=30_000, value=nt_init, step=50, label_visibility="collapsed")
-        st.caption(f"Baseline {scen.upper()} {yr}: Rp{nt_default:,} — nilai naik = depresiasi Rupiah")
+        # KUNCI PERUBAHAN: Konversi nilai absolut menjadi Delta (Selisih) untuk UI
+        delta_nt_init = int(nt_init - nt_default)
+        delta_oil_init = int(oil_init - icp_default)
 
-        st.markdown("**HARGA MINYAK ICP (USD/bbl)**")
-        oil = st.number_input("ICP", min_value=20, max_value=150, value=oil_init, step=1, label_visibility="collapsed")
-        st.caption(f"Baseline {scen.upper()} {yr}: ${icp_default} — kenaikan ICP meningkatkan penerimaan migas & subsidi")
+        st.divider()
+        st.markdown(f"**PERUBAHAN NILAI TUKAR (Δ Rp/USD)**")
+        delta_nt = st.number_input("Delta NT", min_value=-10000, max_value=15000, value=delta_nt_init, step=50, label_visibility="collapsed")
+
+        st.markdown(f"**PERUBAHAN HARGA MINYAK ICP (Δ USD/bbl)**")
+        delta_oil = st.number_input("Delta ICP", min_value=-100, max_value=100, value=delta_oil_init, step=1, label_visibility="collapsed")
+
+        # KUNCI PERUBAHAN: Konversi kembali Delta menjadi Absolut untuk dihitung oleh Engine
+        nt = nt_default + delta_nt
+        oil = icp_default + delta_oil
 
         b_sim, s_sim = simulate_eksternal(nt, oil, yr, scen)
 
@@ -2022,7 +2029,7 @@ elif main_menu == "🌍 Analisis Sensitivitas":
             color = delta_color(dv)
             st.markdown(f"**{lbl}**: :{color}[{sign}{dv:.2f}{sfx}]")
         st.caption(f"Skenario: {scen.upper()} | NT Rp{nt:,} | ICP ${oil}")
-
+        
     st.markdown("### 🌍 Dashboard Sensitivitas Eksternal & Fiskal RI")
     
     st.session_state['ext_nt'] = nt
