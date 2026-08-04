@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.DS_Store
+*.pkl
+*.db
+output_dfm/
+test_out*/
+temp_out*/

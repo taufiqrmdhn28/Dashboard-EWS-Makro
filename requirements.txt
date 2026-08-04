@@ -12,3 +12,4 @@ kaleido
 urllib3
 gdown
 requests
+scipy
