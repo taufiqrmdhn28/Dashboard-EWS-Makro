@@ -773,7 +773,6 @@ div.row-widget.stRadio > div { flex-direction: row; align-items: center; justify
 </div>
 """, unsafe_allow_html=True)
 
-st.sidebar.button("🔄 Refresh & Clear Cache", on_click=st.cache_data.clear)
 
 main_menu = st.radio(
     "Pilih Modul Analisis:",
