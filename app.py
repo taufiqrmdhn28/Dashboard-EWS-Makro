@@ -920,13 +920,13 @@ if main_menu == "📊 Makro Nasional (DFM)":
 
         with header_ui:
             st.markdown(f"### {title_text}")
-            realisasi_bps_ctc = 5.61 
+            realisasi_bps_ctc = 5.45 
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Target Acuan", f"{current_target}%")
             if realisasi_bps_ctc is not None:
                 gap_realisasi = realisasi_bps_ctc - current_target
                 c2.metric("Realisasi BPS (c-t-c)", f"{realisasi_bps_ctc:.2f}%", delta=f"{gap_realisasi:.2f}%")
-                c2.caption("Capaian Triwulan I-2026")
+                c2.caption("Capaian Triwulan II-2026")
             else:
                 c2.metric("Realisasi BPS (c-t-c)", "Belum Rilis", delta="-", delta_color="off")
                 
